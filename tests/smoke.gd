@@ -17,7 +17,15 @@ func _ready() -> void:
 	for i in 10:
 		await get_tree().physics_frame
 	var player := game.get_node_or_null("Players/1") as Player
-	var loot := get_tree().get_first_node_in_group("loot") as Loot
+	# The first item one player can lift: the piano needs two by design, so picking
+	# whatever spawned first made this test fail at random.
+	var loot: Loot = null
+	var gravity := ProjectSettings.get_setting("physics/3d/default_gravity") as float
+	for node in get_tree().get_nodes_in_group("loot"):
+		var candidate := node as Loot
+		if candidate.mass * gravity < Loot.MAX_FORCE:
+			loot = candidate
+			break
 	_check(game.get_node_or_null("Monsters/Monster") != null, "monster spawned")
 	if _check(player != null and loot != null, "host spawned a player and loot"):
 		# Stop the player's own input from clearing the grab, then hold the

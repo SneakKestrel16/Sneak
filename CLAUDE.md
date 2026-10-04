@@ -25,6 +25,8 @@ minimal `.tscn` files, like the sibling Nelbrenn project. Python tools live in `
   `uv pip install --python .venv/Scripts/python.exe -r tools/requirements.txt`.
 - `bash tools/check.sh` imports the project headless and runs `tests/smoke.tscn`.
 - `prek run --all-files` (from Git Bash) runs everything, including the smoke test.
+- See the models without playing: `godot --path . res://tools/showcase.tscn -- --out=<png>`
+  renders every loot kind and the monster to a PNG (opens a window briefly).
 - Two local players: run the game twice with `-- --host` and `-- --join=127.0.0.1`.
 
 ## Code style

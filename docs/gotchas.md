@@ -18,6 +18,9 @@ Traps hit while building Sneak, with what fixed them.
   synchronizers `Sync`.
 - **`change_scene_to_file` from `_ready` errors** with "Parent node is busy adding/removing
   children". Call it deferred, as `main_menu.gd` does for `--host`/`--join`.
+- **Fully metallic materials render near-black in the house.** Metal shows reflections, and the
+  house has no sky or reflection probes, so gold frames came out dark brown in the first
+  showcase render. `Models.METAL` keeps gold and brass at 0.45.
 - **Spawns can arrive before the spawner exists.** A client must build the game scene before it
   asks for its player; see [Network model](design.md#network-model).
 

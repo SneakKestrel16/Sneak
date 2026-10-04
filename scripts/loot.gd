@@ -7,6 +7,8 @@ extends RigidBody3D
 ## The host simulates it; clients freeze their copy and show the replicated
 ## transform.
 
+const Models := preload("res://scripts/models.gd")
+
 const PULL := 40.0  ## Spring stiffness toward the hold point (1/s²).
 const DAMPING := 9.0  ## Keeps the spring from overshooting (1/s).
 const MAX_FORCE := 400.0  ## Newtons one player can put into a held item.
@@ -14,6 +16,7 @@ const KNOCK_SPEED := 3.5  ## Speed change (m/s) in one physics step that starts 
 const DAMAGE := 0.08  ## Share of the base value lost per m/s above KNOCK_SPEED.
 
 # Set before spawning.
+var kind := ""  ## Its name in game.gd's KINDS, which picks the model.
 var size := Vector3.ONE
 var color := Color.WHITE
 var base_value := 0
@@ -30,14 +33,7 @@ func _ready() -> void:
 	var collision := CollisionShape3D.new()
 	collision.shape = shape
 	add_child(collision)
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	mesh.material = material
-	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
-	add_child(instance)
+	add_child(Models.loot(kind, size, color))
 
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED

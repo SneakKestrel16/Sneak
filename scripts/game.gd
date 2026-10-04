@@ -176,6 +176,7 @@ func _spawn_loot(data: Dictionary) -> Node:
 	var loot := Loot.new()
 	loot.name = data["name"]
 	loot.position = data["position"]
+	loot.kind = kind["name"]
 	loot.size = kind["size"]
 	loot.mass = kind["mass"]
 	loot.color = kind["color"]
