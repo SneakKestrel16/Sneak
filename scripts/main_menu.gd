@@ -66,6 +66,12 @@ func _build() -> void:
 	join.pressed.connect(func() -> void: _start(false, _address.text))
 	buttons.add_child(join)
 
+	var dev := CheckBox.new()
+	dev.text = "Developer mode (host only; F1 in game)"
+	dev.button_pressed = Net.dev
+	dev.toggled.connect(func(on: bool) -> void: Net.dev = on)
+	column.add_child(dev)
+
 	var status := Label.new()
 	status.text = Net.message
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

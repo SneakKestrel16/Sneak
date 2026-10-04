@@ -37,6 +37,7 @@ minimal `.tscn` files, like the sibling Nelbrenn project. Python tools live in `
   check them with `showcase -- --set=monsters|loot|decor`. See `docs/models.md`.
 - Replay a house: add `--seed=N` after `--` (the host logs `[level] seed N`); works for the
   game and `tests/smoke.tscn`.
+- Developer mode: add `--dev` (e.g. `-- --host --dev`), then F1 in game; see `docs/dev-mode.md`.
 - Two local players: run the game twice with `-- --host` and `-- --join=127.0.0.1`.
 
 ## Code style

@@ -7,6 +7,7 @@ extends Node3D
 ## How authority is split between peers is in docs/design.md.
 
 const Level := preload("res://scripts/level.gd")
+const Dev := preload("res://scripts/dev.gd")
 
 const MONSTERS := 3
 const DOOR_CLEARANCE := 2.6  ## Loot spawns at least this far from a doorway, so none is blocked.
@@ -178,6 +179,7 @@ var level: Level  ## Built once the seed is known (at once on the host).
 
 var _seed := 0
 var _next_loot := 0  ## Loot node names must be unique for replication.
+var _next_monster := MONSTERS  ## The same for monsters added in dev mode.
 var _host_rng := RandomNumberGenerator.new()  ## What cabinets hold; host only.
 var _cabinets: Array[Cabinet] = []
 
@@ -220,9 +222,17 @@ func _ready() -> void:
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--seed="):
 				_seed = arg.trim_prefix("--seed=").to_int()  # Replays a house, e.g. a failing test.
+		if Net.seed_override >= 0:  # Dev mode asked for this site.
+			_seed = Net.seed_override
+			Net.seed_override = -1
 		print("[level] seed %d" % _seed)
 		_build_level()
 		_host_setup()
+		if Net.dev:
+			var dev := Dev.new()
+			dev.game = self
+			add_child(dev)
+			flash("Developer mode: F1 opens the panel.")
 	else:
 		flash("Connecting to %s:%d..." % [Net.address, Net.port], 10.0)
 
@@ -248,6 +258,38 @@ func prompt(text: String) -> void:
 ## Asks the host to open a cabinet's door or drawer (called by the local player).
 func request_open(cabinet: int, part: int) -> void:
 	_request_open.rpc_id(1, cabinet, part)
+
+
+## The seed this site was built from.
+func site_seed() -> int:
+	return _seed
+
+
+## Dev mode, host only: a loot item of KINDS[kind] at its top value.
+func spawn_loot_at(kind: int, at: Vector3) -> void:
+	var info: Dictionary = KINDS[kind]
+	var values: Vector2i = info["value"]
+	_loot.spawn({"name": "Loot%d" % _next_loot, "kind": kind, "value": values.y, "position": at})
+	_next_loot += 1
+
+
+## Dev mode, host only: one more monster with body Monster.VARIANTS[variant].
+func spawn_monster_at(variant: int, at: Vector3) -> void:
+	var data := {"name": "Monster%d" % _next_monster, "position": at, "variant": variant}
+	_monsters.spawn(data)
+	_next_monster += 1
+
+
+## Dev mode, host only: opens every door and drawer, filling them as usual.
+func open_everything() -> void:
+	for cabinet in _cabinets.size():
+		for part in _cabinets[cabinet].part_count():
+			_request_open(cabinet, part)
+
+
+## Dev mode, host only: adds to what is banked, as if loot reached the truck.
+func add_banked(amount: int) -> void:
+	_set_score.rpc(banked + amount, quota)
 
 
 ## Shows text in the middle of the screen for a few seconds.

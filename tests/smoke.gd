@@ -7,6 +7,7 @@ extends Node
 ## Exits 0 on pass, 1 on fail.
 
 const Level := preload("res://scripts/level.gd")
+const Dev := preload("res://scripts/dev.gd")
 
 const ROAM_SECONDS := 40.0  ## Simulated, at ROAM_SPEEDUP times real time.
 const ROAM_SPEEDUP := 4.0
@@ -123,6 +124,7 @@ func _ready() -> void:
 		func(cabinet: Cabinet) -> bool: return cabinet.opened != 0
 	)
 	_check(opened and found > 0, "opening cupboards and drawers turned up %d valuables" % found)
+	await _check_dev_mode(game)
 	print("SMOKE FAIL" if _failed else "SMOKE PASS")
 	get_tree().quit(1 if _failed else 0)
 
@@ -131,3 +133,26 @@ func _check(ok: bool, what: String) -> bool:
 	print(("ok   " if ok else "FAIL ") + what)
 	_failed = _failed or not ok
 	return ok
+
+
+## The developer panel builds, and its spawns and world actions work.
+func _check_dev_mode(game: Node) -> void:
+	var dev := Dev.new()
+	dev.game = game as Node3D
+	game.add_child(dev)
+	var level: Level = game.get("level")
+	var before := get_tree().get_nodes_in_group("loot").size()
+	game.call("spawn_loot_at", 0, level.spawn + Vector3(0, 1, -3))
+	game.call("spawn_monster_at", 3, level.anchor(level.stair_rooms()[0]))
+	var banked: int = game.get("banked")
+	game.call("add_banked", 100)
+	game.call("open_everything")
+	for i in 30:
+		await get_tree().physics_frame
+	var brute := game.get_node_or_null("Monsters/Monster3") as Monster  # After the three.
+	_check(
+		get_tree().get_nodes_in_group("loot").size() > before and brute and brute.variant == 3,
+		"dev mode spawned loot and a brute"
+	)
+	_check(game.get("banked") == banked + 100, "dev mode banked $100")
+	dev.queue_free()

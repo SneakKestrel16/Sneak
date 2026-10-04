@@ -79,6 +79,7 @@ var furniture: Array[Dictionary] = []
 ## Furniture and decorations that only dress rooms (Decor.place): name,
 ## position, yaw, room, tint.
 var decor: Array[Dictionary] = []
+var themes := {}  ## Room -> the decor theme it was given ("bedroom", "lab"...).
 
 ## Per room: {"floor": int, "rect": Rect2i in site cells, "kind": String,
 ## "building": int (-1 outdoors), "stairwell": int (stair rooms only)}.

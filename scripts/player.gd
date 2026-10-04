@@ -27,6 +27,15 @@ var crouching := false
 var held_loot := ""  ## Name of the loot being dragged, or "".
 var hold_point := Vector3.ZERO  ## Where the dragged loot should go, in world space.
 
+# Developer mode (scripts/dev.gd), on the host's own player.
+var unseen := false  ## Monsters do not notice this player.
+var speed_scale := 1.0
+var flying := false:  ## Flies where it looks and passes through walls.
+	set(value):
+		flying = value
+		collision_layer = 0 if value else 1
+		collision_mask = 0 if value else 1
+
 var _hold_distance := 2.0
 var _shown_prompt := ""
 var _head: Node3D
@@ -99,6 +108,9 @@ func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		return
 
+	if flying:
+		_fly(delta)
+		return
 	# ponytail: crouching only lowers the eyes; the collision capsule stays full height.
 	crouching = Input.is_action_pressed("crouch")
 	if not is_on_floor():
@@ -112,11 +124,37 @@ func _physics_process(delta: float) -> void:
 		speed = CROUCH_SPEED
 	elif Input.is_action_pressed("sprint"):
 		speed = SPRINT_SPEED
-	velocity.x = direction.x * speed
-	velocity.z = direction.z * speed
+	velocity.x = direction.x * speed * speed_scale
+	velocity.z = direction.z * speed * speed_scale
 	move_and_slide()
 	_update_grab()
 	_update_interact()
+
+
+## Developer mode: moves where the camera looks, Space up and Ctrl down,
+## through anything.
+func _fly(delta: float) -> void:
+	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var direction := _camera.global_basis * Vector3(input.x, 0.0, input.y)
+	direction.y += Input.get_axis("crouch", "jump")
+	velocity = direction.limit_length(1.0) * SPRINT_SPEED * 1.5 * speed_scale
+	global_position += velocity * delta
+	_update_grab()
+	_update_interact()
+
+
+## The first thing under the crosshair within reach, or the point at reach
+## (dev mode spawns things there).
+func aim_point(reach: float) -> Vector3:
+	var from := _camera.global_position
+	var to := from - _camera.global_basis.z * reach
+	var query := PhysicsRayQueryParameters3D.create(from, to, 0xFFFFFFFF, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit:
+		var point: Vector3 = hit["position"]
+		var normal: Vector3 = hit["normal"]
+		return point + normal * 0.4
+	return to
 
 
 func _update_grab() -> void:

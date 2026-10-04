@@ -149,6 +149,7 @@ static func place(level: Level, rng: RandomNumberGenerator) -> Array[Dictionary]
 			continue
 		var themes: Array = THEMES[kind]
 		var theme: String = themes[rng.randi() % themes.size()]
+		level.themes[room] = theme
 		var options := catalogue().filter(
 			func(candidate: Dictionary) -> bool: return theme in candidate["themes"]
 		)

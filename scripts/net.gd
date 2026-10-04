@@ -11,12 +11,16 @@ var hosting := true
 var address := "127.0.0.1"
 var message := ""  ## Shown by the main menu after a session ends.
 var args_used := false  ## Command-line --host/--join only apply once.
+var dev := false  ## Developer mode (scripts/dev.gd): the menu's box or `-- --dev`.
+var seed_override := -1  ## The site the next game builds, when dev mode restarts one.
 
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--port="):
 			port = arg.trim_prefix("--port=").to_int()
+		elif arg == "--dev":
+			dev = true
 	# Connected here, once: the multiplayer API outlives each game scene, so connecting in
 	# game.gd added a duplicate every time a session started.
 	multiplayer.server_disconnected.connect(stop.bind("The host left."), CONNECT_DEFERRED)
@@ -45,6 +49,14 @@ func stop(reason: String) -> void:
 		print("[net] session ended: %s" % reason)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().change_scene_to_file(MENU)
+
+
+## Closes the session and loads the game scene again, hosting anew (dev mode;
+## any clients are dropped).
+func restart() -> void:
+	multiplayer.multiplayer_peer.close()
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	get_tree().reload_current_scene.call_deferred()
 
 
 ## Adds a MultiplayerSynchronizer that sends node's properties from its

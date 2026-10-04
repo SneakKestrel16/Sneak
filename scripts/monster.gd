@@ -197,6 +197,8 @@ func _visible_player() -> Player:
 	var eye := global_position + Vector3.UP * eye_height
 	for node in get_tree().get_nodes_in_group("players"):
 		var player := node as Player
+		if player.unseen:
+			continue
 		var reach := CROUCH_NOTICE_RANGE if player.crouching else NOTICE_RANGE
 		var distance := global_position.distance_to(player.global_position)
 		if distance > reach or distance >= best_distance:
@@ -207,6 +209,20 @@ func _visible_player() -> Player:
 			best = player
 			best_distance = distance
 	return best
+
+
+## Walks straight to room, ignoring what it was doing (dev mode).
+func hunt(room: int) -> void:
+	var here := level.room_at(global_position)
+	_route = level.route(here, room)
+	_route.push_front(level.anchor(here))
+	_rest_left = 0.0
+	_best_distance = INF
+
+
+## Stops chasing anyone for seconds; it still roams (dev mode).
+func calm(seconds: float) -> void:
+	_rest_left = seconds
 
 
 ## A point beside the blocked line to the waypoint, kept inside this room.
