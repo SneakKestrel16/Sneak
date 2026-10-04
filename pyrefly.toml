@@ -1,0 +1,3 @@
+# Type-check tools/ against the repo's own interpreter, not whatever is on PATH.
+project-includes = ["tools"]
+python-interpreter-path = ".venv/Scripts/python.exe"

@@ -1,0 +1,11 @@
+# Lint and format for the Python scripts under tools/.
+line-length = 100  # Matches gdformat's default, so both languages wrap alike.
+target-version = "py313"  # The .venv interpreter (uv-managed CPython 3.13).
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "D"]
+# D: docstrings must be well formed when present, but are not mandatory.
+ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D107"]
+
+[lint.pydocstyle]
+convention = "google"

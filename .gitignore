@@ -1,2 +1,8 @@
 # Serena's per-project cache; recreated on first activation.
 .serena/
+
+# Godot cache and import data
+.godot/
+
+# Python tools (gdtoolkit), installed from tools/requirements.txt
+.venv/

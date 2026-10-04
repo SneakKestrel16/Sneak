@@ -5,4 +5,6 @@ is added.
 
 ## Pages
 
-None yet.
+- [Design](design.md) — the core loop, who owns what over the network, and what is deliberately
+  left out of the first version.
+- [Gotchas](gotchas.md) — traps hit while building Sneak (Godot, tooling, Windows).

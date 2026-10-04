@@ -9,20 +9,28 @@ Follow the user-level rules: two or three sentences, findings in commits and doc
 ## Environment
 
 Windows, Git Bash and PowerShell. Remote: `github.com/SneakKestrel16/Sneak` (public) — never
-commit anything sensitive.
+commit anything sensitive. Godot 4.7 (winget) with GDScript, everything built in code with
+minimal `.tscn` files, like the sibling Nelbrenn project. Python tools live in `.venv`
+(CPython 3.13.16 via uv).
 
 ## Hard constraints
 
-None recorded yet.
+- Online co-op from day one: the host owns loot and monsters; each peer owns only its player.
+  See `docs/design.md#network-model` before adding anything that moves.
+- First version is R.E.P.O.-style looting; voice spells and voice chat come later.
 
 ## Build and test
 
-No code yet. `prek run --all-files` (from Git Bash) checks the tree.
+- Set up tools: `uv venv --python 3.13.16 .venv` then
+  `uv pip install --python .venv/Scripts/python.exe -r tools/requirements.txt`.
+- `bash tools/check.sh` imports the project headless and runs `tests/smoke.tscn`.
+- `prek run --all-files` (from Git Bash) runs everything, including the smoke test.
+- Two local players: run the game twice with `-- --host` and `-- --join=127.0.0.1`.
 
 ## Code style
 
-Enforced by `.editorconfig` and `prek.toml`; add the language's linter config at the repo root
-with the first code, with comments saying why each rule or exemption exists. Warnings are errors.
+Enforced by `.editorconfig`, gdformat/gdlint (GDScript), ruff/pyrefly (Python under
+`tools/`) and Godot's warning levels in `project.godot`. Warnings are errors.
 
 ## Where to check facts
 

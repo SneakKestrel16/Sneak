@@ -1,6 +1,6 @@
-# Pre-commit hooks for Sneak. Install with `prek install`; run by hand from Git Bash.
-# Add one hook per build/test project and per language linter as code lands, each scoped
-# with `files` to the paths that can break it (plus shared config like .editorconfig).
+# Pre-commit hooks for Sneak. Install with `prek install`; run by hand from Git Bash
+# (under PowerShell, `bash` resolves to WSL's and the Godot hook exits 127).
+# Tools come from tools/requirements.txt in .venv; Godot from winget (tools/check.sh).
 #:schema https://www.schemastore.org/prek.json
 
 [[repos]]
@@ -8,11 +8,25 @@ repo = "builtin"
 hooks = [
     { id = "trailing-whitespace" },
     { id = "end-of-file-fixer" },
-    # LF everywhere: .editorconfig says so, and mixed endings make diffs noisy.
+    # LF everywhere: .editorconfig and .gitattributes say so.
     { id = "mixed-line-ending", args = ["--fix=lf"] },
     { id = "check-merge-conflict" },
     { id = "check-added-large-files" },
 ]
 
-# ponytail: no docs link/anchor checker or sensitive-file guard yet; add them with the first
-# language toolchain (e.g. a script under tools/ run by the repo's .venv) rather than a new dependency.
+[[repos]]
+repo = "local"
+hooks = [
+    # gdtoolkit's formatter and linter; style is enforced here, not by memory.
+    { id = "gdformat", name = "gdformat", entry = ".venv/Scripts/gdformat --check", language = "system", files = '\.gd$' },
+    { id = "gdlint", name = "gdlint", entry = ".venv/Scripts/gdlint", language = "system", files = '\.gd$' },
+    # Imports the project and runs tests/smoke.tscn. Any Godot ERROR or WARNING fails it
+    # (warnings are errors). Scoped to what the game loads, plus shared config.
+    { id = "godot-smoke", name = "godot smoke test", entry = "bash tools/check.sh", language = "system", pass_filenames = false, files = '^(scripts/|scenes/|tests/|tools/check\.sh$|project\.godot$|\.editorconfig$)' },
+    # Python tools under tools/: lint, format, types (configs in ruff.toml, pyrefly.toml).
+    { id = "ruff", name = "ruff check", entry = ".venv/Scripts/ruff check", language = "system", files = '(\.py|ruff\.toml)$' },
+    { id = "ruff-format", name = "ruff format", entry = ".venv/Scripts/ruff format --check", language = "system", files = '(\.py|ruff\.toml)$' },
+    { id = "pyrefly", name = "pyrefly", entry = ".venv/Scripts/pyrefly check", language = "system", pass_filenames = false, files = '(\.py|pyrefly\.toml)$' },
+    { id = "docs-links", name = "docs links and anchors", entry = ".venv/Scripts/python tools/check_links.py", language = "system", pass_filenames = false, files = '\.md$' },
+    { id = "no-sensitive-files", name = "no sensitive files", entry = ".venv/Scripts/python tools/check_sensitive.py", language = "system", pass_filenames = false, always_run = true },
+]
