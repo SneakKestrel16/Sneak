@@ -17,6 +17,12 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--port="):
 			port = arg.trim_prefix("--port=").to_int()
+	# Connected here, once: the multiplayer API outlives each game scene, so connecting in
+	# game.gd added a duplicate every time a session started.
+	multiplayer.server_disconnected.connect(stop.bind("The host left."), CONNECT_DEFERRED)
+	multiplayer.connection_failed.connect(
+		func() -> void: stop("Could not reach %s:%d." % [address, port]), CONNECT_DEFERRED
+	)
 
 
 ## Hosts or joins, depending on the menu choice. Returns the ENet error.
@@ -35,6 +41,8 @@ func stop(reason: String) -> void:
 	multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	message = reason
+	if reason != "":
+		print("[net] session ended: %s" % reason)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().change_scene_to_file(MENU)
 

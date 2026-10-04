@@ -86,18 +86,19 @@ func _ready() -> void:
 
 	multiplayer.peer_connected.connect(func(id: int) -> void: print("[net] peer %d joined" % id))
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	multiplayer.server_disconnected.connect(Net.stop.bind("The host left."), CONNECT_DEFERRED)
-	multiplayer.connection_failed.connect(
-		Net.stop.bind("Could not reach %s:%d." % [Net.address, Net.port]), CONNECT_DEFERRED
-	)
 	multiplayer.connected_to_server.connect(func() -> void: _client_ready.rpc_id(1))
 
 	var error := Net.start()
 	if error != OK:
-		Net.stop.call_deferred("Could not start the session (%s)." % error_string(error))
+		var reason := "Could not start the session (%s)." % error_string(error)
+		if Net.hosting and error == ERR_CANT_CREATE:
+			reason = "Port %d is already in use. Is another Sneak still running?" % Net.port
+		Net.stop.call_deferred(reason)
 		return
 	if multiplayer.is_server():
 		_host_setup()
+	else:
+		flash("Connecting to %s:%d..." % [Net.address, Net.port], 10.0)
 
 
 func _process(delta: float) -> void:
@@ -114,9 +115,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Shows text in the middle of the screen for a few seconds.
-func flash(text: String) -> void:
+func flash(text: String, seconds := 3.0) -> void:
 	_message.text = text
-	_message_left = 3.0
+	_message_left = seconds
 
 
 func _host_setup() -> void:
@@ -199,6 +200,13 @@ func _client_ready() -> void:
 	var id := multiplayer.get_remote_sender_id()
 	_players.spawn(id)
 	_set_score.rpc_id(id, banked, quota)
+	_welcome.rpc_id(id)
+
+
+## Clears the "Connecting..." message on the client that just joined.
+@rpc("authority", "reliable")
+func _welcome() -> void:
+	flash("Joined. Find the loot, bring it to the truck.")
 
 
 @rpc("authority", "call_local", "reliable")
