@@ -21,7 +21,7 @@ func _ready() -> void:
 	var level := Level.new(seed_value)
 	level.build(self)
 	get_node("Roof").queue_free()
-	for above in range(storey + 1, Level.FLOORS):
+	for above in range(storey + 1, Level.HOUSE_FLOORS):
 		get_node("Floor%d" % above).queue_free()
 	# Even light from above instead of the house's dim lamps.
 	for child in find_children("*", "OmniLight3D", true, false):
@@ -47,7 +47,7 @@ func _ready() -> void:
 	add_child(sun)
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = Level.COLUMNS * Level.CELL + 2.0
+	camera.size = Level.SITE_COLUMNS * Level.CELL + 4.0
 	camera.keep_aspect = Camera3D.KEEP_WIDTH
 	camera.position = Vector3(0, 40, 0)
 	camera.rotation.x = -PI / 2.0

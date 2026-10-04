@@ -1,24 +1,28 @@
 extends RefCounted
-## Generates and builds the house from a seed, so every peer builds the same one.
+## Generates and builds the site from a seed, so every peer builds the same one.
 ##
-## The house is FLOORS storeys on a COLUMNS x ROWS grid of CELL-metre cells.
-## Each storey is split recursively (binary space partition) into rooms of
-## varying size: large halls, medium and small rooms, and narrow hallways, each
-## with its own floor surface. A stair room sits at the same spot on every
-## storey; nothing is ever cut through it. Neighbouring rooms are joined by a
-## random spanning tree of doors (so every room is reachable) plus extra doors
-## and wide arches, which gives loops rather than a maze. Everyone spawns at the
-## truck in a ground-floor room on the south edge.
+## The site is a SITE_COLUMNS x SITE_ROWS grid of CELL-metre cells inside a
+## stone wall. On it stand a two-storey main house and a few single-storey
+## outbuildings; everything else is yard: grass, gravel paths from the truck to
+## each building's doors, trees and lamp posts. The truck waits just inside the
+## gate on the south wall, where everyone spawns.
 ##
-## Rooms are numbered across all storeys. Every room but the stair room is an
-## empty rectangle, so a straight line between two points in one is clear.
+## Each building storey is split recursively (binary space partition) into
+## rooms of varying size, each kind with its own floor surface. The main house
+## has a stair room at the same spot on both storeys that no cut ever crosses.
+## A random spanning tree of doors joins the rooms of a building, plus extra
+## doors and wide arches for loops, and each building gets doors to the yard.
+##
+## For routing, every yard cell is a room of its own (open to its neighbours),
+## so rooms are numbered across buildings, storeys and the yard. Every room but
+## the stair room is an empty rectangle, so a straight line within one is clear.
 
 const Models := preload("res://scripts/models.gd")
+const Props := preload("res://scripts/props.gd")
 
 const CELL := 3.0
-const COLUMNS := 16
-const ROWS := 12
-const FLOORS := 2
+const SITE_COLUMNS := 34
+const SITE_ROWS := 28
 const STOREY := 3.4  ## Floor to floor.
 const SLAB := 0.2
 const WALL_HEIGHT := STOREY - SLAB
@@ -27,55 +31,87 @@ const DOOR_WIDTH := 1.8
 const ARCH_WIDTH := 2.6
 ## Clears the monster's 2.4 m capsule; at 2.3 it jammed under every lintel.
 const DOOR_HEIGHT := 2.6
+
+const HOUSE_SIZE := Vector2i(14, 10)
+const HOUSE_FLOORS := 2
+const OUTBUILDINGS := 3
+const OUTBUILDING_MIN := Vector2i(4, 3)
+const OUTBUILDING_MAX := Vector2i(7, 6)
+const BORDER := 2  ## Cells of yard between any building and the stone wall.
+const CLEARANCE := 2  ## Cells of yard between buildings.
+const TRUCK_YARD := Vector2i(5, 6)  ## Half-width and depth (cells) kept clear around the truck.
+const HOUSE_DOORS := 3
+const OUTBUILDING_DOORS := Vector2i(1, 2)  ## Min, max.
+
 const MIN_SIDE := 2  ## Cells. No cut leaves a room narrower than this.
 const MAX_AREA := 24  ## Cells. Bigger rooms are always split further.
 const STOP_CHANCE := 0.4  ## Chance a room small enough to stay whole does.
 const EXTRA_DOORS := 0.35  ## Chance a neighbour pair the tree left apart gets a door anyway.
-const ARCHES := 0.2  ## Chance a doorway is a wide arch instead.
+const ARCHES := 0.2  ## Chance an inside doorway is a wide arch instead.
 const LIT_ROOMS := 0.45  ## Chance a room has a lamp; the rest need flashlights.
 const STAIR_LENGTH := 5  ## Cells: bottom landing, three of ramp, top landing.
 const STAIR_STEPS := 12
+
+const TREES := 0.08  ## Chance a free yard cell gets a tree (if the yard stays connected).
+const LAMP_EVERY := 6  ## Path cells between lamp posts.
+const PERIMETER_HEIGHT := 3.6
+const PERIMETER_THICKNESS := 0.8
+const GATE_WIDTH := 5.0
+
 const TRUCK_SIZE := Vector3(4.0, 2.0, 2.4)
 const APPROACH := 0.9  ## How far from a doorway walkers line up before going through (m).
+
+const NO_ROOM := -1
+const TREE := -2
+const OUTDOOR_KINDS: Array[String] = ["yard", "path"]
+const WALL_TINTS: Array[Color] = [
+	Color(0.55, 0.3, 0.24),  # Brick.
+	Color(0.45, 0.36, 0.26),  # Timber.
+	Color(0.45, 0.46, 0.44),  # Render.
+]
 
 var spawn_room: int
 var spawn: Vector3  ## Where players appear, just north of the truck bay.
 var truck: Vector3  ## Centre of the truck bay (extraction zone).
 
-## Per room: {"floor": int, "rect": Rect2i in cells, "kind": String}. Kinds are
-## "stairs", "hallway", "small", "medium" and "large".
+## Per room: {"floor": int, "rect": Rect2i in site cells, "kind": String,
+## "building": int (-1 outdoors)}. Kinds: "stairs", "hallway", "small",
+## "medium", "large" indoors; "yard" and "path" outdoors.
 var _rooms: Array[Dictionary] = []
-var _cells: Array[PackedInt32Array] = []  ## Per storey, room id of each cell (y * COLUMNS + x).
+## Per building: {"rect": Rect2i, "floors": int, "tint": Color}. 0 is the house.
+var _buildings: Array[Dictionary] = []
+## Per storey, the room of each cell (y * SITE_COLUMNS + x), NO_ROOM or TREE.
+var _cells: Array[PackedInt32Array] = []
 ## Openings, keyed by _pair(a, b). Doors: {"point", "normal" (lower id to
-## higher), "width", "offset"}. Stairs: {"stairs": true}.
+## higher), "width", "offset"}; yard to yard: {"open": true, "point",
+## "normal"}; stairs: {"stairs": true}.
 var _links := {}
 var _openings := {}  ## Edge key -> door link, for building walls with gaps.
 var _adjacent := {}  ## Room id -> Array of linked room ids.
-var _stairs: Rect2i  ## The stair room's cells, the same on every storey.
+var _stairs: Rect2i  ## The house's stair room, the same cells on both storeys.
+var _paths := {}  ## Yard cells that are gravel paths.
+var _trees: Array[Vector2i] = []
 var _rng := RandomNumberGenerator.new()
 
 
 func _init(seed_value: int) -> void:
 	_rng.seed = seed_value
-	var x := _rng.randi_range(1, COLUMNS - 2)
-	var y := _rng.randi_range(0, ROWS - STAIR_LENGTH - 1)
-	_stairs = Rect2i(x, y, 1, STAIR_LENGTH)
-	for floor_index in FLOORS:
+	for floor_index in HOUSE_FLOORS:
 		var cells := PackedInt32Array()
-		cells.resize(COLUMNS * ROWS)
+		cells.resize(SITE_COLUMNS * SITE_ROWS)
+		cells.fill(NO_ROOM)
 		_cells.append(cells)
-		_split(Rect2i(0, 0, COLUMNS, ROWS), floor_index)
-	_link()
+	_place_buildings()
+	for building in _buildings.size():
+		var floors: int = _buildings[building]["floors"]
+		for floor_index in floors:
+			_split(_buildings[building]["rect"], floor_index, building)
+	var exits := _choose_exits()
+	_lay_paths(exits)
+	_plant_trees(exits)
+	_fill_yard()
+	_link(exits)
 	_place_truck()
-
-
-## The stair rooms, bottom storey first.
-func stair_rooms() -> Array[int]:
-	var found: Array[int] = []
-	for room in _rooms.size():
-		if is_stairs(room):
-			found.append(room)
-	return found
 
 
 func room_count() -> int:
@@ -84,6 +120,10 @@ func room_count() -> int:
 
 func is_stairs(room: int) -> bool:
 	return _rooms[room]["kind"] == "stairs"
+
+
+func is_outdoors(room: int) -> bool:
+	return _rooms[room]["kind"] in OUTDOOR_KINDS
 
 
 func kind(room: int) -> String:
@@ -96,6 +136,15 @@ func floor_of(room: int) -> int:
 
 func floor_height(room: int) -> float:
 	return floor_of(room) * STOREY
+
+
+## The stair rooms, bottom storey first.
+func stair_rooms() -> Array[int]:
+	var found: Array[int] = []
+	for room in _rooms.size():
+		if is_stairs(room):
+			found.append(room)
+	return found
 
 
 ## The room's floor area in world space, x and z.
@@ -114,23 +163,32 @@ func anchor(room: int) -> Vector3:
 
 ## The room containing point, judging the storey by its height.
 func room_at(point: Vector3) -> int:
-	var floor_index := clampi(floori((point.y + 1.0) / STOREY), 0, FLOORS - 1)
-	var x := clampi(floori((point.x + _half_x()) / CELL), 0, COLUMNS - 1)
-	var y := clampi(floori((point.z + _half_z()) / CELL), 0, ROWS - 1)
-	return _cells[floor_index][y * COLUMNS + x]
+	var floor_index := clampi(floori((point.y + 1.0) / STOREY), 0, HOUSE_FLOORS - 1)
+	var x := clampi(floori((point.x + _half_x()) / CELL), 0, SITE_COLUMNS - 1)
+	var y := clampi(floori((point.z + _half_z()) / CELL), 0, SITE_ROWS - 1)
+	var room := _cells[floor_index][y * SITE_COLUMNS + x]
+	if room == NO_ROOM:  # Above the yard: only the house has an upper storey.
+		room = _cells[0][y * SITE_COLUMNS + x]
+	if room == TREE:  # Brushing a trunk: count it as a neighbouring cell.
+		for step: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			var next := Vector2i(x, y) + step
+			if _inside(next) and _room_of(0, next) >= 0:
+				return _room_of(0, next)
+	return room
 
 
-## Rooms you can walk straight into from room, through a door or up the stairs.
+## Rooms you can walk straight into from room: through a door, across open
+## yard, or up the stairs.
 func neighbours(room: int) -> Array:
 	return _adjacent.get(room, [])
 
 
-## Doorway centres of a room, on its floor.
+## Doorway centres of a room, on its floor (not open yard edges).
 func doors(room: int) -> Array[Vector3]:
 	var points: Array[Vector3] = []
 	for next: int in neighbours(room):
 		var link: Dictionary = _links[_pair(room, next)]
-		if link.has("point"):
+		if link.has("width"):
 			points.append(link["point"])
 	return points
 
@@ -149,8 +207,8 @@ func distances_from(start: int) -> Dictionary:
 
 
 ## Waypoints from a point inside room `from` to the anchor of room `to`: line
-## up in front of each doorway and step through, or walk landing to landing up
-## or down the stairs.
+## up in front of each doorway or yard edge and step across, or walk landing to
+## landing up or down the stairs.
 func route(from: int, to: int) -> Array[Vector3]:
 	var came_from := {from: from}
 	var queue: Array[int] = [from]
@@ -179,68 +237,134 @@ func route(from: int, to: int) -> Array[Vector3]:
 	return points
 
 
-## Builds the house under parent and returns the truck bay. Each storey goes in
-## its own node ("Floor0", "Floor1", ..., then "Roof") so tools/map_view can
-## hide the ones above the storey it looks at.
+## Builds the site under parent and returns the truck bay. Storeys go in their
+## own nodes ("Floor0", "Floor1", then "Roof") so tools/map_view can hide the
+## ones above the storey it looks at.
 func build(parent: Node3D) -> Area3D:
-	var size := Vector2(COLUMNS, ROWS) * CELL
-	var slab_material := _plain(Color(0.25, 0.23, 0.21))
-	for floor_index in FLOORS:
+	var storeys: Array[Node3D] = []
+	for floor_index in HOUSE_FLOORS:
 		var storey := Node3D.new()
 		storey.name = "Floor%d" % floor_index
 		parent.add_child(storey)
-		var base := floor_index * STOREY
-		var hole := Rect2()
-		if floor_index > 0:
-			# The stairwell: over the ramp and the bottom landing.
-			var corner := _cell_corner(_stairs.position + Vector2i(0, 1))
-			hole = Rect2(corner, Vector2(1, STAIR_LENGTH - 1) * CELL)
-		for piece in _minus(Rect2(-size / 2.0, size), hole):
-			var centre := Vector3(piece.get_center().x, base - SLAB / 2.0, piece.get_center().y)
-			_box(storey, centre, Vector3(piece.size.x, SLAB, piece.size.y), slab_material)
-		_build_walls(storey, floor_index)
-		for room in _rooms.size():
-			if floor_of(room) == floor_index:
-				_furnish(storey, room)
-		if floor_index == 0:
-			_build_stairs(storey)
+		storeys.append(storey)
 	var roof := Node3D.new()
 	roof.name = "Roof"
 	parent.add_child(roof)
-	var top := Vector3(0, FLOORS * STOREY - SLAB / 2.0, 0)
-	_box(roof, top, Vector3(size.x, SLAB, size.y), _plain(Color(0.3, 0.28, 0.26)))
+
+	_build_grounds(storeys[0])
+	var slab_material := Props.plain(Color(0.25, 0.23, 0.21))
+	var roof_material := Models.textured(
+		Color(0.22, 0.2, 0.2), Vector2.ONE, 0.3, 0.9, 0.0, 0.1, 2.0
+	)
+	for building in _buildings.size():
+		var rect: Rect2i = _buildings[building]["rect"]
+		var area := Rect2(_cell_corner(rect.position), Vector2(rect.size) * CELL)
+		var floors: int = _buildings[building]["floors"]
+		for floor_index in range(1, floors):
+			var hole := Rect2()
+			if building == 0:  # The stairwell: over the ramp and the bottom landing.
+				hole = Rect2(_cell_corner(_stairs.position + Vector2i(0, 1)), Vector2(1, 4) * CELL)
+			for piece in _minus(area, hole):
+				var middle := piece.get_center()
+				var at := Vector3(middle.x, floor_index * STOREY - SLAB / 2.0, middle.y)
+				Props.box(
+					storeys[floor_index],
+					at,
+					Vector3(piece.size.x, SLAB, piece.size.y),
+					slab_material
+				)
+		var top := Vector3(area.get_center().x, floors * STOREY - SLAB / 2.0, area.get_center().y)
+		Props.box(roof, top, Vector3(area.size.x + 0.6, SLAB, area.size.y + 0.6), roof_material)
+	for floor_index in HOUSE_FLOORS:
+		_build_walls(storeys[floor_index], floor_index)
+	for room in _rooms.size():
+		if not is_outdoors(room):
+			_furnish(storeys[floor_of(room)], room)
+	var stairs_x := _cell_centre(_stairs.position.x, 0, 0).x
+	var z_low := _cell_corner(Vector2i(0, _stairs.end.y - 1)).y
+	var z_high := _cell_corner(Vector2i(0, _stairs.position.y + 1)).y
+	var stairs_width := CELL - WALL_THICKNESS
+	Props.stairs(storeys[0], stairs_x, z_low, z_high, stairs_width, STOREY, STAIR_STEPS)
+	var half := Vector2(_half_x(), _half_z())
+	Props.perimeter(storeys[0], half, PERIMETER_THICKNESS, PERIMETER_HEIGHT, truck.x, GATE_WIDTH)
 
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color.BLACK
+	environment.background_color = Color(0.02, 0.025, 0.04)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.25, 0.27, 0.35)
 	environment.ambient_light_energy = 0.15
 	var world := WorldEnvironment.new()
 	world.environment = environment
 	parent.add_child(world)
-	return _build_truck(parent)
+	var moon := DirectionalLight3D.new()
+	moon.rotation = Vector3(-0.9, 0.6, 0)
+	moon.light_color = Color(0.6, 0.7, 1.0)
+	moon.light_energy = 0.12
+	moon.shadow_enabled = true
+	parent.add_child(moon)
+	return Props.truck_bay(parent, truck, TRUCK_SIZE)
 
 
 # Generation ----------------------------------------------------------------
 
 
-## Splits rect into rooms, never cutting through the stair room.
-func _split(rect: Rect2i, floor_index: int) -> void:
+## The house first, north of the truck yard, then outbuildings wherever they fit
+## with yard all round.
+func _place_buildings() -> void:
+	var truck_yard := _truck_yard()
+	var house := Rect2i(Vector2i.ZERO, HOUSE_SIZE)
+	house.position.x = _rng.randi_range(BORDER, SITE_COLUMNS - BORDER - HOUSE_SIZE.x)
+	house.position.y = _rng.randi_range(BORDER, truck_yard.position.y - CLEARANCE - HOUSE_SIZE.y)
+	_buildings.append({"rect": house, "floors": HOUSE_FLOORS, "tint": WALL_TINTS[0]})
+	var stairs_x := _rng.randi_range(house.position.x + 1, house.end.x - 2)
+	var stairs_y := _rng.randi_range(house.position.y, house.end.y - STAIR_LENGTH - 1)
+	_stairs = Rect2i(stairs_x, stairs_y, 1, STAIR_LENGTH)
+
+	for attempt in 60:
+		if _buildings.size() > OUTBUILDINGS:
+			break
+		var size := Vector2i(
+			_rng.randi_range(OUTBUILDING_MIN.x, OUTBUILDING_MAX.x),
+			_rng.randi_range(OUTBUILDING_MIN.y, OUTBUILDING_MAX.y)
+		)
+		var at := Vector2i(
+			_rng.randi_range(BORDER, SITE_COLUMNS - BORDER - size.x),
+			_rng.randi_range(BORDER, SITE_ROWS - BORDER - size.y)
+		)
+		var rect := Rect2i(at, size)
+		var fits := not rect.intersects(truck_yard)
+		for other in _buildings:
+			fits = fits and not rect.intersects((other["rect"] as Rect2i).grow(CLEARANCE))
+		if fits:
+			var tint := WALL_TINTS[_rng.randi_range(1, WALL_TINTS.size() - 1)]
+			_buildings.append({"rect": rect, "floors": 1, "tint": tint})
+
+
+## The cells kept clear in front of the gate for the truck and spawn.
+func _truck_yard() -> Rect2i:
+	var middle := floori(SITE_COLUMNS / 2.0)
+	var depth := TRUCK_YARD.y
+	return Rect2i(middle - TRUCK_YARD.x, SITE_ROWS - depth, TRUCK_YARD.x * 2, depth)
+
+
+## Splits a building storey into rooms, never cutting through the stair room.
+func _split(rect: Rect2i, floor_index: int, building: int) -> void:
+	var stairs := _stairs if building == 0 else Rect2i()
 	if rect.get_area() <= MAX_AREA and _rng.randf() < STOP_CHANCE:
-		_add_leaf(rect, floor_index)
+		_add_leaf(rect, floor_index, building)
 		return
 	var cuts: Array[Vector2i] = []  # (axis, position)
 	var longer := 0 if rect.size.x >= rect.size.y else 1
 	for axis in 2:
 		for at in range(rect.position[axis] + MIN_SIDE, rect.end[axis] - MIN_SIDE + 1):
 			var through_stairs := (
-				rect.intersects(_stairs) and _stairs.position[axis] < at and at < _stairs.end[axis]
+				rect.intersects(stairs) and stairs.position[axis] < at and at < stairs.end[axis]
 			)
 			if not through_stairs:
 				cuts.append(Vector2i(axis, at))
 	if cuts.is_empty():
-		_add_leaf(rect, floor_index)
+		_add_leaf(rect, floor_index, building)
 		return
 	# Mostly cut across the longer side, so rooms stay roughly square.
 	var across: Array[Vector2i] = []
@@ -255,15 +379,15 @@ func _split(rect: Rect2i, floor_index: int) -> void:
 	first.size[cut.x] = cut.y - rect.position[cut.x]
 	second.position[cut.x] = cut.y
 	second.size[cut.x] = rect.end[cut.x] - cut.y
-	_split(first, floor_index)
-	_split(second, floor_index)
+	_split(first, floor_index, building)
+	_split(second, floor_index, building)
 
 
 ## Adds a finished piece as a room. A piece holding the stair room is cut around
 ## it (left, right, then above and below it), which often leaves hallways.
-func _add_leaf(rect: Rect2i, floor_index: int) -> void:
-	if not rect.encloses(_stairs):
-		_add_room(rect, floor_index)
+func _add_leaf(rect: Rect2i, floor_index: int, building: int) -> void:
+	if building != 0 or not rect.encloses(_stairs):
+		_add_room(rect, floor_index, building)
 		return
 	var s := _stairs
 	var pieces: Array[Rect2i] = [
@@ -274,11 +398,11 @@ func _add_leaf(rect: Rect2i, floor_index: int) -> void:
 	]
 	for piece in pieces:
 		if piece.has_area():
-			_add_room(piece, floor_index)
-	_add_room(s, floor_index, "stairs")
+			_add_room(piece, floor_index, building)
+	_add_room(s, floor_index, building, "stairs")
 
 
-func _add_room(rect: Rect2i, floor_index: int, room_kind := "") -> void:
+func _add_room(rect: Rect2i, floor_index: int, building: int, room_kind := "") -> void:
 	if room_kind == "":
 		var short := mini(rect.size.x, rect.size.y)
 		var long := maxi(rect.size.x, rect.size.y)
@@ -291,19 +415,136 @@ func _add_room(rect: Rect2i, floor_index: int, room_kind := "") -> void:
 		else:
 			room_kind = "medium"
 	var room := _rooms.size()
-	_rooms.append({"floor": floor_index, "rect": rect, "kind": room_kind})
+	_rooms.append({"floor": floor_index, "rect": rect, "kind": room_kind, "building": building})
 	for x in range(rect.position.x, rect.end.x):
 		for y in range(rect.position.y, rect.end.y):
-			_cells[floor_index][y * COLUMNS + x] = room
+			_cells[floor_index][y * SITE_COLUMNS + x] = room
 
 
-## Joins neighbouring rooms: a random spanning tree first (Kruskal), so every
-## room on a storey is reachable, then extra doors for loops, then the stairs.
-func _link() -> void:
+## Picks each building's doors to the yard: [room inside, yard cell outside,
+## edge]. The house gets HOUSE_DOORS, outbuildings one or two, on different
+## rooms where possible; never the stair room.
+func _choose_exits() -> Array:
+	var by_building := {}
+	for x in SITE_COLUMNS:
+		for y in SITE_ROWS:
+			var cell := Vector2i(x, y)
+			for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
+				var next := cell + direction
+				if not _inside(next):
+					continue
+				var a := _room_of(0, cell)
+				var b := _room_of(0, next)
+				if (a >= 0) == (b >= 0):
+					continue  # Both inside or both outside.
+				var inside := a if a >= 0 else b
+				if is_stairs(inside):
+					continue
+				var outside := next if a >= 0 else cell
+				var options: Array = by_building.get_or_add(_rooms[inside]["building"], [])
+				options.append([inside, outside, [0, cell, direction]])
+	var exits := []
+	for building: int in by_building:
+		var options: Array = by_building[building]
+		_shuffle(options)
+		var wanted := HOUSE_DOORS
+		if building != 0:
+			wanted = _rng.randi_range(OUTBUILDING_DOORS.x, OUTBUILDING_DOORS.y)
+		var used_rooms := {}
+		for option: Array in options:
+			if used_rooms.size() >= wanted:
+				break
+			if not used_rooms.has(option[0]):
+				used_rooms[option[0]] = true
+				exits.append(option)
+	return exits
+
+
+## Gravel paths: the shortest way over open ground from the truck to each
+## building door.
+func _lay_paths(exits: Array) -> void:
+	var start := _truck_cell()
+	var came_from := {start: start}
+	var queue: Array[Vector2i] = [start]
+	while not queue.is_empty():
+		var cell: Vector2i = queue.pop_front()
+		for step: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+			var next := cell + step
+			if _inside(next) and _room_of(0, next) == NO_ROOM and not came_from.has(next):
+				came_from[next] = cell
+				queue.append(next)
+	for exit: Array in exits:
+		var cell: Vector2i = exit[1]
+		while came_from.has(cell) and cell != start:
+			_paths[cell] = true
+			cell = came_from[cell]
+
+
+## Trees on open ground, but never on a path, by a door or the truck, and never
+## where one would cut part of the yard off.
+func _plant_trees(exits: Array) -> void:
+	var keep_clear := {}
+	for exit: Array in exits:
+		var door_cell: Vector2i = exit[1]
+		for x in range(-1, 2):
+			for y in range(-1, 2):
+				keep_clear[door_cell + Vector2i(x, y)] = true
+	var truck_yard := _truck_yard().grow(1)
+	var open: Array[Vector2i] = []
+	for x in SITE_COLUMNS:
+		for y in SITE_ROWS:
+			var cell := Vector2i(x, y)
+			if _room_of(0, cell) == NO_ROOM:
+				open.append(cell)
+	var candidates: Array = open.duplicate()
+	_shuffle(candidates)
+	var open_count := open.size()
+	for cell: Vector2i in candidates:
+		if _paths.has(cell) or keep_clear.has(cell) or truck_yard.has_point(cell):
+			continue
+		if _rng.randf() >= TREES:
+			continue
+		_cells[0][cell.y * SITE_COLUMNS + cell.x] = TREE
+		if _open_reachable() == open_count - 1:
+			open_count -= 1
+			_trees.append(cell)
+		else:
+			_cells[0][cell.y * SITE_COLUMNS + cell.x] = NO_ROOM
+
+
+## How many open yard cells can be reached from the truck.
+func _open_reachable() -> int:
+	var start := _truck_cell()
+	var seen := {start: true}
+	var queue: Array[Vector2i] = [start]
+	while not queue.is_empty():
+		var cell: Vector2i = queue.pop_front()
+		for step: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+			var next := cell + step
+			if _inside(next) and _room_of(0, next) == NO_ROOM and not seen.has(next):
+				seen[next] = true
+				queue.append(next)
+	return seen.size()
+
+
+## Every open ground cell becomes a one-cell yard (or path) room.
+func _fill_yard() -> void:
+	for y in SITE_ROWS:
+		for x in SITE_COLUMNS:
+			var cell := Vector2i(x, y)
+			if _room_of(0, cell) == NO_ROOM:
+				var room_kind := "path" if _paths.has(cell) else "yard"
+				_add_room(Rect2i(cell, Vector2i.ONE), 0, -1, room_kind)
+
+
+## Joins rooms: inside each building a random spanning tree of doors (Kruskal)
+## plus extra doors for loops; the stairs; every yard cell to its open
+## neighbours; and each building's chosen doors to the yard.
+func _link(exits: Array) -> void:
 	var candidates := {}  # _pair -> Array of [floor, cell, direction]
-	for floor_index in FLOORS:
-		for x in COLUMNS:
-			for y in ROWS:
+	for floor_index in HOUSE_FLOORS:
+		for x in SITE_COLUMNS:
+			for y in SITE_ROWS:
 				var cell := Vector2i(x, y)
 				for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
 					var next := cell + direction
@@ -311,9 +552,17 @@ func _link() -> void:
 						continue
 					var a := _room_of(floor_index, cell)
 					var b := _room_of(floor_index, next)
-					if a != b and _door_allowed(a, cell) and _door_allowed(b, next):
-						var edges: Array = candidates.get_or_add(_pair(a, b), [])
-						edges.append([floor_index, cell, direction])
+					if a < 0 or b < 0 or a == b:
+						continue
+					if is_outdoors(a) and is_outdoors(b):
+						var normal := Vector3(direction.x, 0, direction.y)
+						var middle := _cell_centre(cell.x, cell.y, 0) + normal * CELL / 2.0
+						_links[_pair(a, b)] = {"open": true, "point": middle, "normal": normal}
+						_connect(a, b)
+					elif not is_outdoors(a) and not is_outdoors(b):
+						if _door_allowed(a, cell) and _door_allowed(b, next):
+							var edges: Array = candidates.get_or_add(_pair(a, b), [])
+							edges.append([floor_index, cell, direction])
 
 	var pairs: Array = candidates.keys()
 	_shuffle(pairs)
@@ -327,22 +576,24 @@ func _link() -> void:
 		elif _rng.randf() < EXTRA_DOORS:
 			_open(pair, candidates[pair])
 
-	for room in _rooms.size():
-		if is_stairs(room) and floor_of(room) > 0:
-			var below := _room_of(floor_of(room) - 1, _stairs.position)
-			_links[_pair(below, room)] = {"stairs": true}
-			_connect(below, room)
+	var stairs := stair_rooms()
+	_links[_pair(stairs[0], stairs[1])] = {"stairs": true}
+	_connect(stairs[0], stairs[1])
+
+	for exit: Array in exits:
+		var outside: Vector2i = exit[1]
+		_open(_pair(exit[0], _room_of(0, outside)), [exit[2]], false)
 
 
-## A doorway through one of the walls a and b share, at a random cell edge and
-## a random point along it, so the way on is not obvious from mid-room.
-func _open(pair: Vector2i, edges: Array) -> void:
+## A doorway on one of the given cell edges, at a random point along it, so
+## the way on is not obvious from mid-room.
+func _open(pair: Vector2i, edges: Array, arches := true) -> void:
 	var edge: Array = edges[_rng.randi() % edges.size()]
 	var floor_index: int = edge[0]
 	var cell: Vector2i = edge[1]
 	var direction: Vector2i = edge[2]
-	var stairs := is_stairs(pair.x) or is_stairs(pair.y)
-	var width := ARCH_WIDTH if not stairs and _rng.randf() < ARCHES else DOOR_WIDTH
+	var plain := not arches or is_stairs(pair.x) or is_stairs(pair.y)
+	var width := DOOR_WIDTH if plain or _rng.randf() >= ARCHES else ARCH_WIDTH
 	var slack := (CELL - WALL_THICKNESS - width) / 2.0 - 0.05
 	var along := Vector3.BACK if direction.x != 0 else Vector3.RIGHT
 	var offset := _rng.randf_range(-slack, slack)
@@ -366,62 +617,100 @@ func _landing(stair_room: int) -> int:
 	return _stairs.end.y - 1 if floor_of(stair_room) == 0 else _stairs.position.y
 
 
-## The truck goes in the ground-floor room on the south edge nearest the middle
-## that is big enough for it and the players behind it.
+func _truck_cell() -> Vector2i:
+	return Vector2i(floori(SITE_COLUMNS / 2.0), SITE_ROWS - 1)
+
+
+## The truck parks just inside the gate; players spawn in front of it.
 func _place_truck() -> void:
-	var best_gap := INF
-	for room in _rooms.size():
-		var rect: Rect2i = _rooms[room]["rect"]
-		var fits := rect.size.x >= 2 and rect.size.y >= 2
-		if floor_of(room) != 0 or rect.end.y != ROWS or not fits or is_stairs(room):
-			continue
-		var gap := absf(rect.get_center().x - COLUMNS / 2.0)
-		if gap < best_gap:
-			best_gap = gap
-			spawn_room = room
-	var bounds := room_bounds(spawn_room)
-	var south := bounds.end.y - WALL_THICKNESS / 2.0
-	truck = Vector3(bounds.get_center().x, 1.0, south - TRUCK_SIZE.z / 2.0 - 0.2)
-	spawn = Vector3(truck.x, 0.1, truck.z - TRUCK_SIZE.z / 2.0 - 1.5)
+	var south := _half_z() - TRUCK_SIZE.z / 2.0 - 0.4
+	var middle := _cell_corner(Vector2i(floori(SITE_COLUMNS / 2.0), 0)).x
+	truck = Vector3(middle, 1.0, south)
+	spawn = Vector3(middle, 0.1, south - TRUCK_SIZE.z / 2.0 - 2.0)
+	spawn_room = room_at(spawn)
 
 
 # Building ------------------------------------------------------------------
 
 
-## Every wall on one storey: wherever neighbouring cells belong to different
-## rooms, plus the outside. Runs of plain wall along a grid line merge into one
-## box; a cell edge with a doorway gets two jambs and a lintel.
+## Grass over the whole site, gravel on the paths, trees, lamp posts and a few
+## rocks and bushes.
+func _build_grounds(parent: Node3D) -> void:
+	var size := Vector2(SITE_COLUMNS, SITE_ROWS) * CELL
+	var soil := Props.plain(Color(0.2, 0.17, 0.12))
+	Props.box(parent, Vector3(0, -0.5, 0), Vector3(size.x + 4.0, 1.0, size.y + 4.0), soil)
+	var grass := Models.textured(Color(0.2, 0.3, 0.13), Vector2.ONE, 0.35, 1.0, 0.0, 0.15, 2.5)
+	Props.surface(parent, Rect2(-size / 2.0, size), 0.004, grass)
+	var gravel := Models.textured(Color(0.45, 0.42, 0.37), Vector2.ONE, 0.3, 1.0, 0.0, 0.4, 1.0)
+	var count := 0
+	for cell: Vector2i in _paths:
+		Props.surface(parent, Rect2(_cell_corner(cell), Vector2.ONE * CELL), 0.008, gravel)
+		count += 1
+		if count % LAMP_EVERY == 0:
+			Props.lamp_post(parent, _cell_centre(cell.x, cell.y, 0) + Vector3(1.0, 0, 1.0))
+	for cell in _trees:
+		Props.tree(parent, _cell_centre(cell.x, cell.y, 0), _rng.randf_range(4.0, 7.0))
+	for i in 40:
+		var cell := Vector2i(
+			_rng.randi_range(0, SITE_COLUMNS - 1), _rng.randi_range(0, SITE_ROWS - 1)
+		)
+		var room := _room_of(0, cell)
+		if room < 0 or kind(room) != "yard":
+			continue
+		var jitter := Vector3(_rng.randf_range(-1.2, 1.2), 0, _rng.randf_range(-1.2, 1.2))
+		var at := _cell_centre(cell.x, cell.y, 0) + jitter
+		Props.lump(parent, at, _rng.randf_range(0.2, 0.5), i % 2 == 1)
+
+
+## Every building wall on one storey: wherever a building room meets a
+## different room or open ground. Runs of plain wall along a grid line merge
+## into one box; a cell edge with a doorway gets two jambs and a lintel.
 func _build_walls(parent: Node3D, floor_index: int) -> void:
-	var tint := Color(0.5, 0.47, 0.42) if floor_index == 0 else Color(0.43, 0.46, 0.5)
-	var material := Models.textured(tint, Vector2(1, 3), 0.15, 0.9, 0.0, 0.03, 4.0)
 	# axis 0: north-south walls on the line east of column `line`; axis 1:
-	# east-west walls south of row `line`. Line -1 is the outer west/north wall.
+	# east-west walls south of row `line`.
 	for axis in 2:
-		var lines := COLUMNS if axis == 0 else ROWS
-		var length := ROWS if axis == 0 else COLUMNS
+		var lines := SITE_COLUMNS if axis == 0 else SITE_ROWS
+		var length := SITE_ROWS if axis == 0 else SITE_COLUMNS
 		var direction := Vector2i.RIGHT if axis == 0 else Vector2i.DOWN
 		for line in range(-1, lines):
 			var run_start := -1
+			var run_material: Material = null
 			for i in length + 1:
 				var cell := Vector2i(line, i) if axis == 0 else Vector2i(i, line)
-				var is_wall := i < length and _is_wall(floor_index, cell, direction)
+				var building := _wall_owner(floor_index, cell, direction) if i < length else -1
 				var opening: Dictionary = _openings.get(_edge_key(floor_index, cell, direction), {})
-				if is_wall and opening.is_empty():
+				if building >= 0 and opening.is_empty():
 					if run_start < 0:
 						run_start = i
+						run_material = _wall_material(building, floor_index)
 					continue
 				if run_start >= 0:
-					_wall_run(parent, floor_index, axis, line, Vector2i(run_start, i), material)
+					var span := Vector2i(run_start, i)
+					_wall_run(parent, floor_index, axis, line, span, run_material)
 					run_start = -1
 				if not opening.is_empty():
+					var material := _wall_material(building, floor_index)
 					_doorway(parent, floor_index, cell, direction, opening, material)
 
 
-func _is_wall(floor_index: int, cell: Vector2i, direction: Vector2i) -> bool:
+## The building a wall on this cell edge belongs to, or -1 for no wall: two
+## cells of the same room, or open ground (yard, trees) on both sides.
+func _wall_owner(floor_index: int, cell: Vector2i, direction: Vector2i) -> int:
+	var a := _room_of(floor_index, cell) if _inside(cell) else NO_ROOM
 	var next := cell + direction
-	if not _inside(cell) or not _inside(next):
-		return _inside(cell) or _inside(next)
-	return _room_of(floor_index, cell) != _room_of(floor_index, next)
+	var b := _room_of(floor_index, next) if _inside(next) else NO_ROOM
+	var a_building: int = _rooms[a]["building"] if a >= 0 else -1
+	var b_building: int = _rooms[b]["building"] if b >= 0 else -1
+	if a == b or (a_building < 0 and b_building < 0):
+		return -1
+	return a_building if a_building >= 0 else b_building
+
+
+func _wall_material(building: int, floor_index: int) -> Material:
+	var tint: Color = _buildings[building]["tint"]
+	if floor_index > 0:
+		tint = tint.lerp(Color(0.45, 0.48, 0.52), 0.6)  # Upstairs: cooler wallpaper.
+	return Models.textured(tint, Vector2(1, 3), 0.18, 0.9, 0.0, 0.03, 4.0)
 
 
 ## Plain wall along a grid line, over cells span.x to span.y (exclusive).
@@ -434,14 +723,14 @@ func _wall_run(
 	var length := (span.y - span.x) * CELL + WALL_THICKNESS
 	var y := floor_index * STOREY + WALL_HEIGHT / 2.0
 	if axis == 0:
-		_box(
+		Props.box(
 			parent,
 			Vector3(fixed, y, middle),
 			Vector3(WALL_THICKNESS, WALL_HEIGHT, length),
 			material
 		)
 	else:
-		_box(
+		Props.box(
 			parent,
 			Vector3(middle, y, fixed),
 			Vector3(length, WALL_HEIGHT, WALL_THICKNESS),
@@ -471,10 +760,10 @@ func _doorway(
 	]:
 		var length := piece.y - piece.x
 		var middle := centre + along * (piece.x + piece.y) / 2.0
-		_box(parent, middle + up / 2.0, across + along * length + up, material)
+		Props.box(parent, middle + up / 2.0, across + along * length + up, material)
 	var lintel := WALL_HEIGHT - DOOR_HEIGHT
 	var lintel_at := centre + along * offset + Vector3.UP * (DOOR_HEIGHT + lintel / 2.0)
-	_box(parent, lintel_at, across + along * width + Vector3.UP * lintel, material)
+	Props.box(parent, lintel_at, across + along * width + Vector3.UP * lintel, material)
 
 
 ## The room's floor surface and maybe a lamp.
@@ -483,16 +772,9 @@ func _furnish(parent: Node3D, room: int) -> void:
 	if is_stairs(room) and floor_of(room) > 0:
 		# Only the top landing has floor; the rest is stairwell.
 		bounds = Rect2(bounds.position, Vector2(CELL, CELL))
-	var surface := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(bounds.size.x, 0.02, bounds.size.y)
-	surface.mesh = mesh
-	surface.material_override = _floor_material(kind(room))
-	var middle := bounds.get_center()
-	surface.position = Vector3(middle.x, floor_height(room) + 0.011, middle.y)
-	parent.add_child(surface)
-
-	if room == spawn_room or (not is_stairs(room) and _rng.randf() < LIT_ROOMS):
+	var material := _floor_material(kind(room), _rooms[room]["building"])
+	Props.surface(parent, bounds, floor_height(room) + 0.011, material)
+	if not is_stairs(room) and _rng.randf() < LIT_ROOMS:
 		var lamp := OmniLight3D.new()
 		lamp.position = anchor(room) + Vector3.UP * (WALL_HEIGHT - 0.4)
 		lamp.light_color = Color(1.0, 0.8, 0.55)
@@ -502,7 +784,9 @@ func _furnish(parent: Node3D, room: int) -> void:
 		parent.add_child(lamp)
 
 
-func _floor_material(room_kind: String) -> StandardMaterial3D:
+func _floor_material(room_kind: String, building: int) -> StandardMaterial3D:
+	if building > 0:  # Outbuildings: rough planks throughout.
+		return Models.textured(Color(0.38, 0.3, 0.22), Vector2(1, 5), 0.45, 0.9, 0.0, 0.05, 3.0)
 	match room_kind:
 		"large":  # Parquet: tight wood grain.
 			return Models.textured(Color(0.5, 0.33, 0.18), Vector2(1, 6), 0.4, 0.45, 0.0, 0.06, 2.0)
@@ -518,74 +802,11 @@ func _floor_material(room_kind: String) -> StandardMaterial3D:
 	return Models.textured(Color(0.45, 0.45, 0.45), Vector2.ONE, 0.25, 0.95, 0.0, 0.08, 2.0)
 
 
-## The ramp that players and monsters walk on, plus visual steps, rising north
-## from the bottom landing to the top landing over three cells.
-func _build_stairs(parent: Node3D) -> void:
-	var x := _cell_centre(_stairs.position.x, 0, 0).x
-	var z_low := _cell_corner(Vector2i(0, _stairs.end.y - 1)).y
-	var z_high := _cell_corner(Vector2i(0, _stairs.position.y + 1)).y
-	var run := z_low - z_high
-	var width := CELL - WALL_THICKNESS
-	var angle := atan2(STOREY, run)
-	var ramp := StaticBody3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = Vector3(width, SLAB, Vector2(run, STOREY).length())
-	var collision := CollisionShape3D.new()
-	collision.shape = shape
-	ramp.add_child(collision)
-	ramp.rotation.x = angle
-	var normal := Vector3(0, cos(angle), sin(angle))
-	ramp.position = Vector3(x, STOREY / 2.0, (z_low + z_high) / 2.0) - normal * SLAB / 2.0
-	parent.add_child(ramp)
-
-	var concrete := _floor_material("stairs")
-	var depth := run / STAIR_STEPS
-	for i in STAIR_STEPS:
-		# Step tops sit half a riser above the ramp at their front edge, so feet
-		# on the smooth ramp look like they are on the steps.
-		var height := (i + 0.5) * STOREY / STAIR_STEPS
-		var step := MeshInstance3D.new()
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(width, height, depth)
-		step.mesh = mesh
-		step.material_override = concrete
-		step.position = Vector3(x, height / 2.0, z_low - (i + 0.5) * depth)
-		parent.add_child(step)
-
-
-func _build_truck(parent: Node3D) -> Area3D:
-	var area := Area3D.new()
-	area.position = truck
-	var shape := BoxShape3D.new()
-	shape.size = TRUCK_SIZE
-	var collision := CollisionShape3D.new()
-	collision.shape = shape
-	area.add_child(collision)
-	var plate := MeshInstance3D.new()
-	var plate_mesh := BoxMesh.new()
-	plate_mesh.size = Vector3(TRUCK_SIZE.x, 0.02, TRUCK_SIZE.z)
-	var plate_material := _plain(Color(0.2, 0.9, 0.4))
-	plate_material.emission_enabled = true
-	plate_material.emission = Color(0.1, 0.6, 0.25)
-	plate_mesh.material = plate_material
-	plate.mesh = plate_mesh
-	plate.position.y = 0.03 - TRUCK_SIZE.y / 2.0
-	area.add_child(plate)
-	var sign_label := Label3D.new()
-	sign_label.text = "TRUCK"
-	sign_label.font_size = 96
-	sign_label.position = Vector3(0, 0.6, TRUCK_SIZE.z / 2.0 + 0.1)
-	sign_label.rotation.y = PI
-	area.add_child(sign_label)
-	parent.add_child(area)
-	return area
-
-
 # Helpers -------------------------------------------------------------------
 
 
 func _room_of(floor_index: int, cell: Vector2i) -> int:
-	return _cells[floor_index][cell.y * COLUMNS + cell.x]
+	return _cells[floor_index][cell.y * SITE_COLUMNS + cell.x]
 
 
 func _connect(a: int, b: int) -> void:
@@ -593,8 +814,8 @@ func _connect(a: int, b: int) -> void:
 	(_adjacent.get_or_add(b, []) as Array).append(a)
 
 
-## Fisher-Yates with the house's own RNG. Array.shuffle() uses the global RNG,
-## which differs per peer, so clients would build a different house.
+## Fisher-Yates with the site's own RNG. Array.shuffle() uses the global RNG,
+## which differs per peer, so clients would build a different site.
 func _shuffle(items: Array) -> void:
 	for i in range(items.size() - 1, 0, -1):
 		var j := _rng.randi_range(0, i)
@@ -613,15 +834,15 @@ func _cell_centre(x: int, y: int, floor_index: int) -> Vector3:
 
 
 func _inside(cell: Vector2i) -> bool:
-	return cell.x >= 0 and cell.y >= 0 and cell.x < COLUMNS and cell.y < ROWS
+	return cell.x >= 0 and cell.y >= 0 and cell.x < SITE_COLUMNS and cell.y < SITE_ROWS
 
 
 func _half_x() -> float:
-	return COLUMNS * CELL / 2.0
+	return SITE_COLUMNS * CELL / 2.0
 
 
 func _half_z() -> float:
-	return ROWS * CELL / 2.0
+	return SITE_ROWS * CELL / 2.0
 
 
 ## The same key for a-b and b-a.
@@ -654,26 +875,3 @@ static func _minus(rect: Rect2, hole: Rect2) -> Array[Rect2]:
 		if piece.has_area():
 			pieces.append(piece)
 	return pieces
-
-
-static func _box(parent: Node3D, centre: Vector3, size: Vector3, material: Material) -> void:
-	var body := StaticBody3D.new()
-	body.position = centre
-	var shape := BoxShape3D.new()
-	shape.size = size
-	var collision := CollisionShape3D.new()
-	collision.shape = shape
-	body.add_child(collision)
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh.material = material
-	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
-	body.add_child(instance)
-	parent.add_child(body)
-
-
-static func _plain(color: Color) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	return material

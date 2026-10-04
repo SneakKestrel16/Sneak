@@ -24,7 +24,7 @@ const PROGRESS := 0.3  ## Metres closer that count as getting somewhere.
 ## slide even the piano (about 340 N of friction); a shove can chip the loot's value.
 const SHOVE := 8.0
 const DETOUR := 1.6  ## How far to step aside when stuck (m).
-const WANDER_RANGE := Vector2i(2, 6)  ## How many rooms away a roam goes (min, max).
+const WANDER_RANGE := Vector2i(3, 16)  ## How many rooms away a roam goes (min, max).
 
 var level: Level  ## Set by the host; clients leave it null and never think.
 

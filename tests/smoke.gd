@@ -36,7 +36,7 @@ func _ready() -> void:
 	var reachable := level.distances_from(level.spawn_room).size()
 	var rooms := level.room_count()
 	_check(reachable == rooms, "every room is reachable (%d of %d)" % [reachable, rooms])
-	_check(game.get_node_or_null("Monsters/Monster1") != null, "both monsters spawned")
+	_check(game.get_node_or_null("Monsters/Monster2") != null, "all three monsters spawned")
 	if _check(player != null and loot != null, "host spawned a player and loot"):
 		# Stop the player's own input from clearing the grab, then hold the
 		# loot above the truck, starting from beside it in the spawn room.

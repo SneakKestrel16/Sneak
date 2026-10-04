@@ -18,8 +18,8 @@ minimal `.tscn` files, like the sibling Nelbrenn project. Python tools live in `
 - Online co-op from day one: the host owns loot and monsters; each peer owns only its player.
   See `docs/design.md#network-model` before adding anything that moves.
 - First version is R.E.P.O.-style looting; voice spells and voice chat come later.
-- Every peer builds the house from the host's seed; anything random in the layout must come
-  from `Level`'s own RNG, in the same order on every peer.
+- Every peer builds the site from the host's seed; anything random in the layout or its props
+  must come from `Level`'s own RNG, in the same order on every peer.
 
 ## Build and test
 

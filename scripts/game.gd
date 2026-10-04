@@ -8,10 +8,12 @@ extends Node3D
 
 const Level := preload("res://scripts/level.gd")
 
-const MONSTERS := 2
+const MONSTERS := 3
 const DOOR_CLEARANCE := 2.6  ## Loot spawns at least this far from a doorway, so none is blocked.
 const BIG_ROOM := 120.0  ## Square metres; rooms this big get an extra item.
-const DEPTH_BONUS := 0.06  ## Extra value per room away from the truck, so deep runs pay.
+## Extra value per step (room or yard cell) away from the truck, so deep runs pay.
+const DEPTH_BONUS := 0.02
+const YARD_LOOT := 0.02  ## Chance an open yard cell has something worth taking.
 const QUOTA_SHARE := 0.5  ## Share of the house's total value the quota asks for.
 ## Value is a min..max range. One player holds up to Loot.MAX_FORCE (400 N),
 ## so the piano (70 kg, ~690 N to lift) takes two.
@@ -146,11 +148,13 @@ func _host_setup() -> void:
 	var total := 0
 	var index := 0
 	for room: int in distance:
-		if room == level.spawn_room or level.is_stairs(room):
+		if room == level.spawn_room or level.is_stairs(room) or level.kind(room) == "path":
 			continue
 		var area := level.room_bounds(room).get_area()
 		var count := 1 + rng.randi() % 2 + (1 if area >= BIG_ROOM else 0)
 		count += 1 if level.neighbours(room).size() == 1 else 0  # Dead ends pay.
+		if level.is_outdoors(room):
+			count = 1 if rng.randf() < YARD_LOOT else 0
 		for i in count:
 			var kind := rng.randi() % KINDS.size()
 			var values: Vector2i = KINDS[kind]["value"]
@@ -168,7 +172,7 @@ func _host_setup() -> void:
 	_set_score(0, roundi(total * QUOTA_SHARE / 10.0) * 10)
 
 	var far_first: Array = distance.keys().filter(
-		func(room: int) -> bool: return not level.is_stairs(room)
+		func(room: int) -> bool: return not level.is_stairs(room) and not level.is_outdoors(room)
 	)
 	far_first.sort_custom(func(a: int, b: int) -> bool: return distance[a] > distance[b])
 	for i in MONSTERS:
