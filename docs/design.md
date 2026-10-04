@@ -9,20 +9,24 @@ but not in the first version (decided 2026-10-03).
 
 1. The host rolls a seed and builds the site from it (`scripts/level.gd`); see
    [The site](#the-site). Everyone spawns at the truck bay inside the south gate.
-2. Loot lies out in every room but the stairs, clear of doorways and furniture: one or two items,
-   one more in rooms of 120 m² or more, and one more in a dead end; and in 2% of yard cells. Value
+2. Loot lies out in every room but the stairs, clear of doorways, furniture, the truck bay and the
+   lines monsters walk: one or two items, one more in rooms of 120 m² or more, and one more in a
+   dead end; and in 2% of yard cells. An item with no such spot in 30 tries is left out, and no
+   piano goes in a narrow hall. Value
    grows 2% per step (room or yard cell) away from the truck, so deep runs pay (`_host_setup` in
    `scripts/game.gd`). The quota is half the value lying out, rounded to $10, so what is found in
    furniture is extra.
 3. Cupboards (two doors over shelves) and dressers (three drawers) stand against room walls. Look
    at a shut door or drawer and press E: it opens for everyone, and once open, the host puts one
-   to three small valuables in it (20% are empty): gems, necklaces, books or vials. They stay
+   to three small valuables in it (20% are empty): gems, necklaces, books, vials, goblets, pocket
+   watches or idols. They stay
    open, so nothing ever closes on loot. See [Furniture](#furniture).
 4. Players hold the left mouse button on loot to drag it (`scripts/player.gd`). Every knock
    chips value; at $0 it breaks (`scripts/loot.gd`). Heavy loot needs several players, because
    each holder adds at most 400 N.
 5. Loot dropped in the truck bay is banked. Meeting the quota is announced; the run carries on.
-6. Three monsters (`scripts/monster.gd`) start in the indoor rooms farthest from the truck. They
+6. Three monsters (`scripts/monster.gd`) start in the indoor rooms farthest from the truck, each
+   with a different one of four bodies ([Models](models.md#monsters)). They
    roam along routes 3 to 16 steps (rooms or yard cells) long and chase any player they can see
    within 14 m, or 4 m if the player is crouching. Walls, trees and loot block their view. A
    catch sends the player back to the truck and drops what they held.
@@ -62,14 +66,23 @@ small buildings (all 2026-10-04).
   flashlights.
 
 For routing, every yard cell is a room of its own, open to its yard neighbours (about 600 of the
-site's 700-odd rooms). Monsters route with `Level.route`: a breadth-first search over rooms, lining up 0.9 m in front of
-each doorway and stepping through, or walking landing to landing on the stairs. Every room but the
-stair room is an empty rectangle, so these straight legs are clear except for loot. Monsters
+site's 700-odd rooms). Monsters route with `Level.route`: a breadth-first search over rooms, lining
+up 0.9 m in front of each doorway and stepping through, or walking landing to landing on the
+stairs. Indoor rooms on the way are crossed by their middle (anchor), so a route only ever runs
+between a room's middle and the points in front of its doorways (`Level.approaches`); decor keeps
+0.7 m clear of those lines and loot spawns clear of them, so the legs start clear. Monsters
 shove loot in their way (480 N, enough to slide the piano, and it can chip value). If one gets no
-closer to its next waypoint for 1.5 s it steps 1.6 m aside, alternating sides. Monsters are on
+closer to its next waypoint for 1.5 s it steps 1.6 m aside, alternating sides; after three tries
+in one room it gives up and roams somewhere else, since loot pinned against furniture may never
+move. Crossing by the middle made routes longer: the smoke test's monsters pass 5 to 9 rooms in
+its 40 s where they passed 10 to 12 (seeds 11 to 24, 2026-10-04). Monsters are on
 collision layer 2 and only collide with layer 1, so two never jam each other on the stairs. Loot
 never spawns within 2.6 m of a doorway or in the stair room, so the house always starts fully
 passable; players can still barricade doors with it.
+
+Every indoor room is also dressed with themed furniture and decorations from Blender models:
+beds, sofas, desks, kitchens, lab tanks, rugs, pictures and so on, placed by `scripts/decor.gd`.
+See [Models](models.md#decor).
 
 Joining clients build the same house from the seed (`_request_world` → `_receive_world` →
 `_client_ready` in `game.gd`), before their player spawns. `tools/map_view.tscn` renders any seed

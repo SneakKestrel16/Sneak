@@ -6,3 +6,6 @@
 
 # Python tools (gdtoolkit), installed from tools/requirements.txt
 .venv/
+
+# Python bytecode from running the Blender scripts
+__pycache__/

@@ -1,3 +1,5 @@
 # Type-check tools/ against the repo's own interpreter, not whatever is on PATH.
 project-includes = ["tools"]
 python-interpreter-path = ".venv/Scripts/python.exe"
+# tools/blender scripts import their shared lib.py by its bare name, as Blender runs them.
+search-path = ["tools/blender"]

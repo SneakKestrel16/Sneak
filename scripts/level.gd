@@ -12,16 +12,18 @@ extends RefCounted
 ## sit at the same spots on both storeys and no cut ever crosses them. A random
 ## spanning tree of doors joins the rooms, plus extra doors and wide arches for
 ## loops, and the facility gets several doors to the yard. Cupboards and
-## dressers stand against room walls (`furniture`, built by game.gd).
+## dressers stand against room walls (`furniture`, built by game.gd), and
+## themed furniture and decorations dress each room (`decor`, see decor.gd).
 ##
 ## For routing, every yard cell is a room of its own (open to its neighbours),
 ## so rooms are numbered across storeys and the yard. Every room but a stair
-## room is an empty rectangle bar furniture against its walls, so a straight
-## line through its middle is clear.
+## room is a rectangle whose furniture keeps clear of the straight lines
+## monsters walk between its doorways and its middle.
 
 const Models := preload("res://scripts/models.gd")
 const Props := preload("res://scripts/props.gd")
 const Cabinet := preload("res://scripts/cabinet.gd")
+const Decor := preload("res://scripts/decor.gd")
 
 const CELL := 3.0
 const SITE_COLUMNS := 34
@@ -74,6 +76,9 @@ var truck: Vector3  ## Centre of the truck bay (extraction zone).
 ## Cupboards and dressers: {"type": Cabinet.Type, "position": Vector3 (floor,
 ## middle of footprint), "yaw": float (front faces into the room), "room": int}.
 var furniture: Array[Dictionary] = []
+## Furniture and decorations that only dress rooms (Decor.place): name,
+## position, yaw, room, tint.
+var decor: Array[Dictionary] = []
 
 ## Per room: {"floor": int, "rect": Rect2i in site cells, "kind": String,
 ## "building": int (-1 outdoors), "stairwell": int (stair rooms only)}.
@@ -115,6 +120,7 @@ func _init(seed_value: int) -> void:
 	_link(exits)
 	_place_truck()
 	_place_furniture()
+	decor = Decor.place(self, _rng)
 
 
 func room_count() -> int:
@@ -210,6 +216,21 @@ func doors(room: int) -> Array[Vector3]:
 	return points
 
 
+## Where monster routes enter and leave room: in front of each doorway or yard
+## edge, or the landing for the stairs. Routes run straight between these and
+## the room's anchor, so decor keeps clear of those lines.
+func approaches(room: int) -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	for next: int in neighbours(room):
+		var link: Dictionary = _links[_pair(room, next)]
+		if link.has("stairs"):
+			points.append(anchor(room))
+		else:
+			var normal: Vector3 = link["normal"] if room < next else -link["normal"]
+			points.append(link["point"] - normal * APPROACH)
+	return points
+
+
 ## Steps from start to every room.
 func distances_from(start: int) -> Dictionary:
 	var distance := {start: 0}
@@ -225,7 +246,8 @@ func distances_from(start: int) -> Dictionary:
 
 ## Waypoints from a point inside room `from` to the anchor of room `to`: line
 ## up in front of each doorway or yard edge and step across, or walk landing to
-## landing up or down the stairs.
+## landing up or down the stairs. Indoor rooms on the way are crossed by their
+## anchor, so a route only ever runs between a room's middle and its doorways.
 func route(from: int, to: int) -> Array[Vector3]:
 	var came_from := {from: from}
 	var queue: Array[int] = [from]
@@ -250,6 +272,10 @@ func route(from: int, to: int) -> Array[Vector3]:
 			var normal: Vector3 = link["normal"] if previous < current else -link["normal"]
 			points.push_front(link["point"] + normal * APPROACH)
 			points.push_front(link["point"] - normal * APPROACH)
+		# Cross furnished rooms by their middle, the way their decor leaves clear.
+		var crossing := previous != from and not is_stairs(previous) and not is_outdoors(previous)
+		if crossing and points[0] != anchor(previous):
+			points.push_front(anchor(previous))
 		current = previous
 	return points
 
@@ -304,6 +330,7 @@ func build(parent: Node3D) -> Area3D:
 	for room in _rooms.size():
 		if not is_outdoors(room):
 			_furnish(storeys[floor_of(room)], room)
+	Decor.build(self, storeys)
 	for stairs in _stairs:
 		var stairs_x := _cell_centre(stairs.position.x, 0, 0).x
 		var z_low := _cell_corner(Vector2i(0, stairs.end.y - 1)).y

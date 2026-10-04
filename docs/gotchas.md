@@ -34,6 +34,26 @@ Traps hit while building Sneak, with what fixed them.
 - **Spawns can arrive before the spawner exists.** A client must build the game scene before it
   asks for its player; see [Network model](design.md#network-model).
 
+- **A showcase or tool scene with a script error hangs instead of quitting.** Its `_ready` never
+  runs, so nothing calls `quit()`, and piping its output through `grep` hides the error until you
+  kill it. Pass `--quit-after <frames>` when running tool scenes by hand.
+
+## Blender
+
+- **World matrices go stale while a script builds.** After setting `location` or `rotation_euler`,
+  `matrix_world` keeps its old value until the view layer updates, so parenting "keeping the
+  world transform" put every part at the origin and measured sizes were nonsense (the brute came
+  out 2.9 m tall). `lib._refresh` calls `view_layer.update()` before anything reads a matrix.
+- **`bound_box` overstates anything turned.** It is the object's local box, so its corners,
+  rotated into the world, stick out past the mesh; a tilted globe ring measured 0.49 m in a
+  0.4 m box. `lib.bounds` measures the vertices.
+- **Blender's colour fields are linear.** A Principled base colour of 0.16 came back from glTF
+  into Godot as 0.44, because Godot converts glTF's linear colours to sRGB. `lib.mat` takes sRGB
+  like the GDScript does and converts.
+- **Metaball radius is not the surface radius.** A lone ball's surface is at 0.575 of its radius
+  (threshold 0.6, stiffness 2, measured in Blender 5.2); `lib.blob` takes surface radii and
+  divides.
+
 ## Gameplay
 
 - **Doorways must clear the monster's capsule.** The first doors were 2.3 m and the monster's
@@ -49,6 +69,15 @@ Traps hit while building Sneak, with what fixed them.
 - **Two monsters can jam each other on the stairs.** The stair room is one cell wide; a monster
   going up met one coming down and both stalled (a timing-dependent smoke failure). Monsters now
   collide only with layer 1, not each other.
+
+- **Furniture on a monster's way traps it for good.** With rooms furnished, a piano lying on a
+  monster's line got pinned against a sofa or a hall wall, and the monster shoved at it forever:
+  seeds 11, 12 and 16 left a monster in one or two rooms. Monster routes now cross rooms only by
+  their middle, decor and loot keep clear of those lines, pianos stay out of narrow halls, and a
+  monster that cannot get round something in three tries roams elsewhere.
+- **Yard loot can spawn in the truck bay** and be banked before anyone touches it, which made the
+  smoke test's "dragged loot was banked" check see two items (seed 13, once the loot draws
+  changed). Loot now spawns at least 4 m from the bay's centre.
 
 ## Tooling
 
@@ -67,3 +96,6 @@ $//'` on what it touched, or let the hook fix them before committing.
   2026-10-03 with uv 0.12.23.
 - **serena does not build on Python 3.14.** Its pinned pyyaml has no 3.14 wheel, so the MCP
   server is registered with `uvx --python 3.13`.
+- **`Path.read_text()` decodes as cp1252 on Windows.** A script that read UTF-8 GDScript that way
+  and wrote it back as UTF-8 turned every `·` into mojibake, worse with each edit. Pass
+  `encoding="utf-8"` to both.

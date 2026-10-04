@@ -10,6 +10,9 @@ const Level := preload("res://scripts/level.gd")
 
 const MONSTERS := 3
 const DOOR_CLEARANCE := 2.6  ## Loot spawns at least this far from a doorway, so none is blocked.
+## Loot spawns at least this far from the truck bay's centre: yard loot that
+## spawned in the bay was banked before anyone touched it.
+const TRUCK_CLEARANCE := 4.0
 const BIG_ROOM := 120.0  ## Square metres; rooms this big get an extra item.
 ## Extra value per step (room or yard cell) away from the truck, so deep runs pay.
 const DEPTH_BONUS := 0.02
@@ -95,6 +98,67 @@ const KINDS: Array[Dictionary] = [
 		"tints": [Color(0.3, 0.9, 0.5), Color(0.8, 0.2, 0.9), Color(0.95, 0.6, 0.1)],
 		"small": true,
 		"fragility": 3.0,  # Glass: handle with care.
+	},
+	{
+		"name": "bust",
+		"size": Vector3(0.3, 0.6, 0.26),
+		"mass": 14.0,
+		"value": Vector2i(150, 350),
+		"color": Color(0.86, 0.85, 0.82),
+		"fragility": 0.6,  # Marble chips, but slowly.
+	},
+	{
+		"name": "candelabra",
+		"size": Vector3(0.4, 0.55, 0.15),
+		"mass": 3.0,
+		"value": Vector2i(120, 260),
+		"color": Color(0.85, 0.66, 0.2),
+		"fragility": 0.6,
+	},
+	{
+		"name": "globe",
+		"size": Vector3(0.4, 0.55, 0.4),
+		"mass": 4.0,
+		"value": Vector2i(90, 220),
+		"color": Color(0.16, 0.3, 0.42),
+	},
+	{
+		"name": "gramophone",
+		"size": Vector3(0.5, 0.65, 0.5),
+		"mass": 9.0,
+		"value": Vector2i(140, 300),
+		"color": Color(0.42, 0.24, 0.12),
+		"fragility": 1.5,  # The horn dents.
+	},
+	{
+		"name": "goblet",
+		"size": Vector3(0.09, 0.18, 0.09),
+		"mass": 0.3,
+		"value": Vector2i(150, 320),
+		"color": Color(0.85, 0.66, 0.2),
+		"tints": [Color(0.85, 0.66, 0.2), Color(0.8, 0.8, 0.82)],
+		"small": true,
+		"fragility": 0.5,
+	},
+	{
+		"name": "pocket watch",
+		"size": Vector3(0.06, 0.016, 0.09),
+		"mass": 0.12,
+		"value": Vector2i(100, 240),
+		"color": Color(0.85, 0.66, 0.2),
+		"tints": [Color(0.85, 0.66, 0.2), Color(0.8, 0.8, 0.82)],
+		"small": true,
+		"fragility": 1.5,
+	},
+	{
+		"name": "idol",
+		"size": Vector3(0.08, 0.14, 0.06),
+		"mass": 0.6,
+		"value": Vector2i(300, 600),
+		"color": Color(0.85, 0.66, 0.2),
+		"tints": [Color(0.85, 0.66, 0.2)],
+		"small": true,
+		"fragility": 0.3,
 	},
 ]
 const CONTROLS := {
@@ -228,17 +292,20 @@ func _host_setup() -> void:
 		count += 1 if level.neighbours(room).size() == 1 else 0  # Dead ends pay.
 		if level.is_outdoors(room):
 			count = 1 if rng.randf() < YARD_LOOT else 0
+		# A piano lying across a narrow hall would stop the monsters for good.
+		var fits := big
+		if level.kind(room) == "hallway":
+			fits = big.filter(func(kind: int) -> bool: return KINDS[kind]["size"].x < 1.0)
 		for i in count:
-			var kind: int = big[rng.randi() % big.size()]
+			var kind: int = fits[rng.randi() % fits.size()]
 			var values: Vector2i = KINDS[kind]["value"]
 			var depth: int = distance[room]
 			var value := roundi(rng.randi_range(values.x, values.y) * (1.0 + DEPTH_BONUS * depth))
-			var data := {
-				"name": "Loot%d" % _next_loot,
-				"kind": kind,
-				"value": value,
-				"position": _clear_spot(rng, room),
-			}
+			var spot := _clear_spot(rng, room, KINDS[kind]["size"])
+			if not spot.is_finite():
+				continue  # No room for it here that leaves the monsters' way clear.
+			var data := {"name": "Loot%d" % _next_loot, "kind": kind, "value": value}
+			data["position"] = spot
 			_loot.spawn(data)
 			total += value
 			_next_loot += 1
@@ -249,30 +316,43 @@ func _host_setup() -> void:
 	)
 	far_first.sort_custom(func(a: int, b: int) -> bool: return distance[a] > distance[b])
 	for i in MONSTERS:
-		_monsters.spawn({"name": "Monster%d" % i, "position": level.anchor(far_first[i])})
+		# A different body each, turning over from run to run.
+		var data := {"name": "Monster%d" % i, "position": level.anchor(far_first[i])}
+		data["variant"] = (_seed + i) % Monster.VARIANTS.size()
+		_monsters.spawn(data)
 	_players.spawn(_player_data(1))
 
 
-## A random point in room, at least DOOR_CLEARANCE from its doorways and clear
-## of furniture. A piano spawned in a dead end's only doorway sealed it,
-## monsters included.
-func _clear_spot(rng: RandomNumberGenerator, room: int) -> Vector3:
+## A random point in room, at least DOOR_CLEARANCE from its doorways, clear
+## of furniture, and clear of the lines monsters cross the room by. A piano
+## spawned in a dead end's only doorway sealed it, monsters included, and loot
+## pinned against furniture on a monster's line stopped it for good. Vector3.INF
+## if 30 tries find no such point (a crowded room).
+func _clear_spot(rng: RandomNumberGenerator, room: int, size: Vector3) -> Vector3:
 	var bounds := level.room_bounds(room).grow(-1.0)
-	var spot := Vector3.ZERO
-	for attempt in 20:
+	var reach := Vector2(size.x, size.z).length() / 2.0 + 0.6
+	for attempt in 30:
 		var x := rng.randf_range(bounds.position.x, bounds.end.x)
 		var z := rng.randf_range(bounds.position.y, bounds.end.y)
-		spot = Vector3(x, level.floor_height(room), z)
-		var clear := true
-		for door in level.doors(room):
-			if spot.distance_to(door) < DOOR_CLEARANCE:
-				clear = false
-		for piece in level.furniture_in(room):
-			if spot.distance_to(piece["position"]) < 1.5:
-				clear = false
-		if clear:
-			break
-	return spot + Vector3.UP
+		var spot := Vector3(x, level.floor_height(room), z)
+		if _spot_margin(room, spot, reach) >= 0.0:
+			return spot + Vector3.UP
+	return Vector3.INF
+
+
+## How much room a spot leaves (m): negative when it is too near a doorway,
+## furniture, a monster line or the truck, by the most it falls short.
+func _spot_margin(room: int, spot: Vector3, reach: float) -> float:
+	var margin := Level.Decor.line_distance(level, room, spot) - reach
+	var truck := Vector2(level.truck.x, level.truck.z)
+	margin = minf(margin, Vector2(spot.x, spot.z).distance_to(truck) - TRUCK_CLEARANCE)
+	for door in level.doors(room):
+		margin = minf(margin, spot.distance_to(door) - DOOR_CLEARANCE)
+	for piece in level.furniture_in(room):
+		margin = minf(margin, spot.distance_to(piece["position"]) - 1.5)
+	if Level.Decor.blocks(level, room, spot, reach - 0.6):
+		margin = minf(margin, -10.0)
+	return margin
 
 
 func _player_data(id: int) -> Dictionary:
@@ -328,6 +408,7 @@ func _spawn_monster(data: Dictionary) -> Node:
 	var monster := Monster.new()
 	monster.name = data["name"]
 	monster.position = data["position"]
+	monster.variant = data.get("variant", 0)
 	monster.level = level  # Null on a client that has not built yet; clients never think.
 	Net.replicate(monster, ["position", "rotation"])
 	return monster
@@ -398,7 +479,7 @@ func _set_cabinet(cabinet: int, mask: int) -> void:
 	_cabinets[cabinet].set_opened(mask, true)
 
 
-## Puts small valuables (gems, necklaces, books, vials) in a freshly opened
+## Puts small valuables (gems, necklaces, goblets...) in a freshly opened
 ## door or drawer, sometimes nothing. Host only.
 func _fill_cabinet(cabinet: int, part: int) -> void:
 	if _host_rng.randf() < EMPTY_CHANCE:

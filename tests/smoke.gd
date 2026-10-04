@@ -2,7 +2,8 @@ extends Node
 ## Headless smoke test, run by tools/check.sh. Hosts a session; checks every
 ## room of the site is reachable, drags one loot item into the truck with a
 ## scripted grab, checks the monsters roam through several rooms rather than
-## sticking and can climb the stairs, and opens furniture to find valuables.
+## sticking and can climb the stairs, that decor keeps clear of their lines,
+## and opens furniture to find valuables.
 ## Exits 0 on pass, 1 on fail.
 
 const Level := preload("res://scripts/level.gd")
@@ -38,6 +39,17 @@ func _ready() -> void:
 	var rooms := level.room_count()
 	_check(reachable == rooms, "every room is reachable (%d of %d)" % [reachable, rooms])
 	_check(game.get_node_or_null("Monsters/Monster2") != null, "all three monsters spawned")
+	# Monsters cross rooms between the middle and the doorways; nothing solid there.
+	var crossed := 0
+	for room in rooms:
+		var middle := level.anchor(room)
+		for point in level.approaches(room):
+			for step in 21:
+				if Level.Decor.blocks(level, room, middle.lerp(point, step / 20.0), 0.5):
+					crossed += 1
+	var dressed := level.decor.size()
+	_check(dressed > 300, "decor dresses the rooms (%d pieces)" % dressed)
+	_check(crossed == 0, "no decor on a monster line (%d points blocked)" % crossed)
 	if _check(player != null and loot != null, "host spawned a player and loot"):
 		# Stop the player's own input from clearing the grab, then hold the
 		# loot above the truck, starting from beside it in the spawn room.

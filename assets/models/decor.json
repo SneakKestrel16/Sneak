@@ -1,0 +1,1117 @@
+[
+	{
+		"name": "sofa",
+		"size": [
+			2.0,
+			0.91,
+			0.9
+		],
+		"place": "wall",
+		"themes": [
+			"living"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "armchair",
+		"size": [
+			0.857,
+			1.225,
+			0.873
+		],
+		"place": "corner",
+		"themes": [
+			"living",
+			"library",
+			"bedroom"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		],
+		"anywhere": true
+	},
+	{
+		"name": "coffee_table",
+		"size": [
+			1.1,
+			0.565,
+			0.6
+		],
+		"place": "free",
+		"themes": [
+			"living"
+		],
+		"solid": true
+	},
+	{
+		"name": "bookcase",
+		"size": [
+			1.06,
+			2.02,
+			0.4
+		],
+		"place": "wall",
+		"themes": [
+			"living",
+			"library",
+			"office"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "fireplace",
+		"size": [
+			1.7,
+			1.52,
+			0.56
+		],
+		"place": "wall",
+		"themes": [
+			"living",
+			"library",
+			"dining"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.3,
+				0.45,
+				0.6
+			],
+			[
+				0.6,
+				0.2,
+				0.2
+			],
+			[
+				0.25,
+				0.45,
+				0.3
+			],
+			[
+				0.8,
+				0.75,
+				0.6
+			]
+		]
+	},
+	{
+		"name": "floor_lamp",
+		"size": [
+			0.42,
+			1.62,
+			0.42
+		],
+		"place": "corner",
+		"themes": [
+			"living",
+			"library",
+			"bedroom"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "potted_plant",
+		"size": [
+			0.625,
+			1.199,
+			0.532
+		],
+		"place": "corner",
+		"themes": [
+			"living",
+			"dining",
+			"office",
+			"hall",
+			"library"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "side_table",
+		"size": [
+			0.5,
+			1.01,
+			0.5
+		],
+		"place": "wall",
+		"themes": [
+			"living",
+			"library",
+			"hall"
+		],
+		"solid": true
+	},
+	{
+		"name": "dining_set",
+		"size": [
+			2.0,
+			1.195,
+			1.8
+		],
+		"place": "free",
+		"themes": [
+			"dining"
+		],
+		"solid": true
+	},
+	{
+		"name": "sideboard",
+		"size": [
+			1.64,
+			1.258,
+			0.547
+		],
+		"place": "wall",
+		"themes": [
+			"dining",
+			"living"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.3,
+				0.45,
+				0.6
+			],
+			[
+				0.6,
+				0.2,
+				0.2
+			],
+			[
+				0.25,
+				0.45,
+				0.3
+			],
+			[
+				0.8,
+				0.75,
+				0.6
+			]
+		]
+	},
+	{
+		"name": "china_cabinet",
+		"size": [
+			1.16,
+			1.91,
+			0.515
+		],
+		"place": "wall",
+		"themes": [
+			"dining",
+			"kitchen"
+		],
+		"solid": true
+	},
+	{
+		"name": "writing_desk",
+		"size": [
+			1.4,
+			1.14,
+			1.12
+		],
+		"place": "wall",
+		"themes": [
+			"library",
+			"office",
+			"bedroom"
+		],
+		"solid": true
+	},
+	{
+		"name": "bed_double",
+		"size": [
+			1.68,
+			1.1,
+			2.1
+		],
+		"place": "wall",
+		"themes": [
+			"bedroom"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "bed_single",
+		"size": [
+			1.05,
+			1.0,
+			2.044
+		],
+		"place": "wall",
+		"themes": [
+			"bedroom",
+			"lab"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "nightstand",
+		"size": [
+			0.5,
+			0.95,
+			0.439
+		],
+		"place": "wall",
+		"themes": [
+			"bedroom"
+		],
+		"solid": true
+	},
+	{
+		"name": "wardrobe",
+		"size": [
+			1.28,
+			2.1,
+			0.665
+		],
+		"place": "wall",
+		"themes": [
+			"bedroom"
+		],
+		"solid": true
+	},
+	{
+		"name": "vanity",
+		"size": [
+			1.0,
+			1.52,
+			0.905
+		],
+		"place": "wall",
+		"themes": [
+			"bedroom"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "office_desk",
+		"size": [
+			1.5,
+			1.16,
+			1.296
+		],
+		"place": "wall",
+		"themes": [
+			"office",
+			"lab"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.3,
+				0.45,
+				0.6
+			],
+			[
+				0.6,
+				0.2,
+				0.2
+			],
+			[
+				0.25,
+				0.45,
+				0.3
+			],
+			[
+				0.8,
+				0.75,
+				0.6
+			]
+		]
+	},
+	{
+		"name": "filing_cabinet",
+		"size": [
+			0.5,
+			1.44,
+			0.69
+		],
+		"place": "wall",
+		"themes": [
+			"office",
+			"lab",
+			"storage"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "water_cooler",
+		"size": [
+			0.32,
+			1.4,
+			0.35
+		],
+		"place": "corner",
+		"themes": [
+			"office",
+			"hall"
+		],
+		"solid": true
+	},
+	{
+		"name": "metal_shelf",
+		"size": [
+			1.208,
+			1.9,
+			0.45
+		],
+		"place": "wall",
+		"themes": [
+			"storage",
+			"office",
+			"lab"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "kitchen_counter",
+		"size": [
+			1.82,
+			1.215,
+			0.64
+		],
+		"place": "wall",
+		"themes": [
+			"kitchen"
+		],
+		"solid": true
+	},
+	{
+		"name": "stove",
+		"size": [
+			0.83,
+			1.145,
+			0.742
+		],
+		"place": "wall",
+		"themes": [
+			"kitchen"
+		],
+		"solid": true
+	},
+	{
+		"name": "fridge",
+		"size": [
+			0.78,
+			1.82,
+			0.784
+		],
+		"place": "corner",
+		"themes": [
+			"kitchen"
+		],
+		"solid": true
+	},
+	{
+		"name": "kitchen_table",
+		"size": [
+			1.202,
+			0.98,
+			1.696
+		],
+		"place": "free",
+		"themes": [
+			"kitchen"
+		],
+		"solid": true
+	},
+	{
+		"name": "workbench",
+		"size": [
+			1.8,
+			1.675,
+			0.95
+		],
+		"place": "wall",
+		"themes": [
+			"lab",
+			"storage"
+		],
+		"solid": true
+	},
+	{
+		"name": "specimen_tank",
+		"size": [
+			0.8,
+			2.182,
+			0.812
+		],
+		"place": "corner",
+		"themes": [
+			"lab"
+		],
+		"solid": true
+	},
+	{
+		"name": "lab_shelf",
+		"size": [
+			1.2,
+			1.8,
+			0.4
+		],
+		"place": "wall",
+		"themes": [
+			"lab"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "gurney",
+		"size": [
+			2.0,
+			1.118,
+			0.715
+		],
+		"place": "wall",
+		"themes": [
+			"lab"
+		],
+		"solid": true
+	},
+	{
+		"name": "server_rack",
+		"size": [
+			0.62,
+			2.0,
+			0.921
+		],
+		"place": "wall",
+		"themes": [
+			"lab",
+			"office"
+		],
+		"solid": true
+	},
+	{
+		"name": "toilet",
+		"size": [
+			0.4,
+			0.8,
+			0.669
+		],
+		"place": "wall",
+		"themes": [
+			"bathroom"
+		],
+		"solid": true
+	},
+	{
+		"name": "bath_sink",
+		"size": [
+			0.6,
+			1.012,
+			0.45
+		],
+		"place": "wall",
+		"themes": [
+			"bathroom"
+		],
+		"solid": true
+	},
+	{
+		"name": "bathtub",
+		"size": [
+			1.68,
+			0.783,
+			0.8
+		],
+		"place": "wall",
+		"themes": [
+			"bathroom"
+		],
+		"solid": true
+	},
+	{
+		"name": "box_stack",
+		"size": [
+			1.26,
+			1.098,
+			0.729
+		],
+		"place": "corner",
+		"themes": [
+			"storage",
+			"hall",
+			"lab"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "barrel",
+		"size": [
+			0.939,
+			0.9,
+			0.639
+		],
+		"place": "corner",
+		"themes": [
+			"storage",
+			"kitchen"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "mop_bucket",
+		"size": [
+			0.38,
+			1.371,
+			0.38
+		],
+		"place": "corner",
+		"themes": [
+			"storage",
+			"bathroom",
+			"hall"
+		],
+		"solid": true
+	},
+	{
+		"name": "sacks",
+		"size": [
+			0.884,
+			0.892,
+			0.481
+		],
+		"place": "corner",
+		"themes": [
+			"storage",
+			"kitchen"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "bench",
+		"size": [
+			1.4,
+			0.53,
+			0.42
+		],
+		"place": "wall",
+		"themes": [
+			"hall"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "coat_rack",
+		"size": [
+			0.65,
+			1.87,
+			0.572
+		],
+		"place": "corner",
+		"themes": [
+			"hall",
+			"bedroom"
+		],
+		"solid": true,
+		"anywhere": true
+	},
+	{
+		"name": "umbrella_stand",
+		"size": [
+			0.26,
+			0.957,
+			0.26
+		],
+		"place": "corner",
+		"themes": [
+			"hall"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.3,
+				0.45,
+				0.6
+			],
+			[
+				0.6,
+				0.2,
+				0.2
+			],
+			[
+				0.25,
+				0.45,
+				0.3
+			],
+			[
+				0.8,
+				0.75,
+				0.6
+			]
+		]
+	},
+	{
+		"name": "console_table",
+		"size": [
+			1.2,
+			1.14,
+			0.38
+		],
+		"place": "wall",
+		"themes": [
+			"hall",
+			"living"
+		],
+		"solid": true,
+		"tints": [
+			[
+				0.3,
+				0.45,
+				0.6
+			],
+			[
+				0.6,
+				0.2,
+				0.2
+			],
+			[
+				0.25,
+				0.45,
+				0.3
+			],
+			[
+				0.8,
+				0.75,
+				0.6
+			]
+		]
+	},
+	{
+		"name": "radiator",
+		"size": [
+			1.005,
+			0.659,
+			0.14
+		],
+		"place": "wall",
+		"themes": [
+			"living",
+			"bedroom",
+			"office",
+			"hall",
+			"bathroom",
+			"dining"
+		],
+		"solid": true
+	},
+	{
+		"name": "rug_persian",
+		"size": [
+			2.72,
+			0.014,
+			1.8
+		],
+		"place": "rug",
+		"themes": [
+			"living",
+			"dining",
+			"library",
+			"bedroom"
+		],
+		"solid": false,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "rug_round",
+		"size": [
+			2.0,
+			0.011,
+			2.0
+		],
+		"place": "rug",
+		"themes": [
+			"living",
+			"bedroom"
+		],
+		"solid": false
+	},
+	{
+		"name": "runner",
+		"size": [
+			0.9,
+			0.012,
+			3.0
+		],
+		"place": "rug",
+		"themes": [
+			"hall"
+		],
+		"solid": false,
+		"tints": [
+			[
+				0.45,
+				0.12,
+				0.12
+			],
+			[
+				0.2,
+				0.32,
+				0.22
+			],
+			[
+				0.2,
+				0.27,
+				0.42
+			],
+			[
+				0.6,
+				0.52,
+				0.4
+			],
+			[
+				0.35,
+				0.22,
+				0.3
+			]
+		]
+	},
+	{
+		"name": "framed_picture",
+		"size": [
+			0.9,
+			0.65,
+			0.056
+		],
+		"place": "hang",
+		"themes": [
+			"living",
+			"dining",
+			"bedroom",
+			"hall",
+			"library",
+			"office"
+		],
+		"solid": false,
+		"mount": 1.3
+	},
+	{
+		"name": "portrait",
+		"size": [
+			0.536,
+			0.67,
+			0.07
+		],
+		"place": "hang",
+		"themes": [
+			"living",
+			"dining",
+			"hall",
+			"library"
+		],
+		"solid": false,
+		"mount": 1.2
+	},
+	{
+		"name": "mirror",
+		"size": [
+			0.6,
+			0.97,
+			0.05
+		],
+		"place": "hang",
+		"themes": [
+			"bathroom",
+			"bedroom",
+			"hall"
+		],
+		"solid": false,
+		"mount": 1.0
+	},
+	{
+		"name": "wall_clock",
+		"size": [
+			0.4,
+			0.4,
+			0.075
+		],
+		"place": "hang",
+		"themes": [
+			"kitchen",
+			"office",
+			"hall",
+			"living"
+		],
+		"solid": false,
+		"mount": 1.7
+	},
+	{
+		"name": "wall_shelf",
+		"size": [
+			1.0,
+			0.363,
+			0.24
+		],
+		"place": "hang",
+		"themes": [
+			"kitchen",
+			"library",
+			"lab",
+			"bedroom"
+		],
+		"solid": false,
+		"mount": 1.45
+	},
+	{
+		"name": "antlers",
+		"size": [
+			0.69,
+			0.661,
+			0.234
+		],
+		"place": "hang",
+		"themes": [
+			"living",
+			"hall",
+			"library"
+		],
+		"solid": false,
+		"mount": 1.75
+	},
+	{
+		"name": "sconce",
+		"size": [
+			0.18,
+			0.28,
+			0.245
+		],
+		"place": "hang",
+		"themes": [
+			"hall",
+			"living",
+			"dining",
+			"bathroom"
+		],
+		"solid": false,
+		"mount": 1.55
+	},
+	{
+		"name": "notice_board",
+		"size": [
+			1.1,
+			0.75,
+			0.039
+		],
+		"place": "hang",
+		"themes": [
+			"office",
+			"lab",
+			"storage"
+		],
+		"solid": false,
+		"mount": 1.0
+	},
+	{
+		"name": "wall_cabinet",
+		"size": [
+			1.2,
+			0.7,
+			0.37
+		],
+		"place": "hang",
+		"themes": [
+			"kitchen"
+		],
+		"solid": false,
+		"mount": 1.5
+	}
+]

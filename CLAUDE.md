@@ -27,10 +27,14 @@ minimal `.tscn` files, like the sibling Nelbrenn project. Python tools live in `
   `uv pip install --python .venv/Scripts/python.exe -r tools/requirements.txt`.
 - `bash tools/check.sh` imports the project headless and runs `tests/smoke.tscn`.
 - `prek run --all-files` (from Git Bash) runs everything, including the smoke test.
-- See the models without playing: `godot --path . res://tools/showcase.tscn -- --out=<png>`
-  renders every loot kind and the monster to a PNG (opens a window briefly).
+- See the models without playing: `godot --path . res://tools/showcase.tscn -- --set=loot
+  --out=<png>` renders every loot kind (`--set=monsters`, `--set=decor` for the others; opens a
+  window briefly).
 - See a generated house from above: `godot --path . res://tools/map_view.tscn -- --seed=N
   --floor=0 --out=<png>` (doorways marked red; `--floor=1` for upstairs).
+- Rebuild the Blender models (Blender 5.2 is not on PATH): `"/c/Program Files/Blender
+  Foundation/Blender 5.2/blender.exe" -b --factory-startup --python tools/blender/build.py`, then
+  check them with `showcase -- --set=monsters|loot|decor`. See `docs/models.md`.
 - Replay a house: add `--seed=N` after `--` (the host logs `[level] seed N`); works for the
   game and `tests/smoke.tscn`.
 - Two local players: run the game twice with `-- --host` and `-- --join=127.0.0.1`.
