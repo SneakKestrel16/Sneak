@@ -30,7 +30,7 @@ minimal `.tscn` files, like the sibling Nelbrenn project. Python tools live in `
 - See the models without playing: `godot --path . res://tools/showcase.tscn -- --out=<png>`
   renders every loot kind and the monster to a PNG (opens a window briefly).
 - See a generated house from above: `godot --path . res://tools/map_view.tscn -- --seed=N
-  --out=<png>` (doorways marked red).
+  --floor=0 --out=<png>` (doorways marked red; `--floor=1` for upstairs).
 - Replay a house: add `--seed=N` after `--` (the host logs `[level] seed N`); works for the
   game and `tests/smoke.tscn`.
 - Two local players: run the game twice with `-- --host` and `-- --join=127.0.0.1`.

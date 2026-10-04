@@ -36,7 +36,9 @@ static func loot(kind: String, size: Vector3, color: Color) -> Node3D:
 
 
 ## A material whose colour varies with noise around base. grain stretches the
-## texture (e.g. Vector2(1, 8) for wood running vertically). Shared by key.
+## texture (e.g. Vector2(1, 8) for wood running vertically). With tile > 0 the
+## texture is projected in world space and repeats every tile metres, so a
+## floor looks the same in a small room as in a hall. Shared by key.
 static func textured(
 	base: Color,
 	grain := Vector2.ONE,
@@ -44,8 +46,9 @@ static func textured(
 	roughness := 0.8,
 	metallic := 0.0,
 	frequency := 0.02,
+	tile := 0.0,
 ) -> StandardMaterial3D:
-	var key := [base, grain, contrast, roughness, metallic, frequency]
+	var key := [base, grain, contrast, roughness, metallic, frequency, tile]
 	if _materials.has(key):
 		return _materials[key]
 	var noise := FastNoiseLite.new()
@@ -73,6 +76,10 @@ static func textured(
 	material.roughness = roughness
 	material.metallic = metallic
 	material.uv1_scale = Vector3(grain.x, grain.y, 1.0)
+	if tile > 0.0:
+		material.uv1_triplanar = true
+		material.uv1_world_triplanar = true
+		material.uv1_scale = Vector3(grain.x, 1.0, grain.y) / tile
 	_materials[key] = material
 	return material
 

@@ -1,6 +1,6 @@
 class_name Monster
 extends CharacterBody3D
-## Roams the maze along routes from Level.route and chases any player it can
+## Roams the house along routes from Level.route and chases any player it can
 ## see. Crouching players are only noticed up close, which is the point of
 ## sneaking. Loot and walls block its view. The host runs it; clients see the
 ## replicated transform and only animate it.
@@ -54,6 +54,10 @@ func _ready() -> void:
 	collision.position.y = 1.2
 	add_child(collision)
 
+	# Monsters sit on their own layer and only collide with layer 1 (the house,
+	# loot, players), so two never jam each other on the narrow stairs.
+	collision_layer = 2
+	collision_mask = 1
 	_build_model()
 	_last_position = position
 
@@ -98,6 +102,7 @@ func _physics_process(delta: float) -> void:
 		_stuck_for = 0.0
 	var goal := target.global_position if target else _route[0]
 	var to_goal := goal - global_position
+	var climb := absf(to_goal.y)  # A waypoint upstairs is not reached from below it.
 	to_goal.y = 0.0
 	# Stuck means not getting closer to the waypoint (sliding along loot still moves).
 	var distance := to_goal.length()
@@ -110,7 +115,7 @@ func _physics_process(delta: float) -> void:
 	if target and to_goal.length() < CATCH_RANGE:
 		target.caught.rpc_id(target.get_multiplayer_authority(), level.spawn)
 		_rest_left = REST_TIME
-	elif not target and to_goal.length() < 0.4:
+	elif not target and to_goal.length() < 0.4 and climb < 1.5:
 		_route.pop_front()
 		_best_distance = INF
 
@@ -241,26 +246,24 @@ func _detour(waypoint: Vector3) -> Vector3:
 	var ahead := waypoint - global_position
 	ahead.y = 0.0
 	var aside := ahead.normalized().rotated(Vector3.UP, PI / 2.0) * _detour_side * DETOUR
-	var centre := level.room_center(level.room_at(global_position))
-	var inner := Level.ROOM / 2.0 - 0.8
+	var bounds := level.room_bounds(level.room_at(global_position)).grow(-0.8)
 	var point := global_position + aside
-	point.x = clampf(point.x, centre.x - inner, centre.x + inner)
-	point.z = clampf(point.z, centre.z - inner, centre.z + inner)
-	point.y = 0.0
+	point.x = clampf(point.x, bounds.position.x, bounds.end.x)
+	point.z = clampf(point.z, bounds.position.y, bounds.end.y)
 	return point
 
 
-## Picks a room a few doors away and walks there, starting from the middle of
-## this room so the first leg is clear (rooms are empty boxes).
+## Picks a room a few doors away and walks there, starting from where it stands
+## in this room (rooms are empty boxes, so the first leg is clear).
 func _plan_roam() -> void:
 	var here := level.room_at(global_position)
-	var options: Array[Vector2i] = []
+	var options: Array = []
 	var distance := level.distances_from(here)
-	for room: Vector2i in distance:
+	for room: int in distance:
 		if distance[room] >= WANDER_RANGE.x and distance[room] <= WANDER_RANGE.y:
 			options.append(room)
 	if options.is_empty():
 		options = level.neighbours(here)
-	var target := options[_rng.randi() % options.size()] if options else here
+	var target: int = options[_rng.randi() % options.size()] if options else here
 	_route = level.route(here, target)
-	_route.push_front(level.room_center(here))
+	_route.push_front(level.anchor(here))

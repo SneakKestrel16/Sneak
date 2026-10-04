@@ -24,6 +24,9 @@ Traps hit while building Sneak, with what fixed them.
 - **`Engine.time_scale` does not add physics steps.** It stretches each step's delta, so
   waiting N physics frames still takes N/60 real seconds but simulates N/60 × scale. The smoke
   test's roam check divides its frame count by the speed-up.
+- **`Array.shuffle()` and `randi()` use the global RNG**, which is seeded differently on every
+  peer. Anything in house generation must use `Level`'s own seeded RNG (`Level._shuffle`), or
+  clients build a different house from the same seed.
 - **Spawns can arrive before the spawner exists.** A client must build the game scene before it
   asks for its player; see [Network model](design.md#network-model).
 
@@ -39,6 +42,9 @@ Traps hit while building Sneak, with what fixed them.
   item it slid along forever. Speed-based stuck checks missed the sliding (it was still moving),
   so stuck now means "no closer to the waypoint", it detours sideways, it shoves loot, and loot
   spawns clear of doorways. Replay a house with `-- --seed=N`; the host logs `[level] seed N`.
+- **Two monsters can jam each other on the stairs.** The stair room is one cell wide; a monster
+  going up met one coming down and both stalled (a timing-dependent smoke failure). Monsters now
+  collide only with layer 1, not each other.
 
 ## Tooling
 

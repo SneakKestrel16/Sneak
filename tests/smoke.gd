@@ -8,6 +8,7 @@ const Level := preload("res://scripts/level.gd")
 
 const ROAM_SECONDS := 40.0  ## Simulated, at ROAM_SPEEDUP times real time.
 const ROAM_SPEEDUP := 4.0
+const CLIMB_SECONDS := 8.0  ## Real time; the ramp is 9.6 m at 1.8 m/s.
 const ROAM_ROOMS := 3  ## Rooms each monster must pass through in that time.
 
 var _failed := false
@@ -33,7 +34,7 @@ func _ready() -> void:
 			break
 	var level: Level = game.get("level")
 	var reachable := level.distances_from(level.spawn_room).size()
-	var rooms := Level.COLUMNS * Level.ROWS
+	var rooms := level.room_count()
 	_check(reachable == rooms, "every room is reachable (%d of %d)" % [reachable, rooms])
 	_check(game.get_node_or_null("Monsters/Monster1") != null, "both monsters spawned")
 	if _check(player != null and loot != null, "host spawned a player and loot"):
@@ -41,7 +42,7 @@ func _ready() -> void:
 		# loot above the truck, starting from beside it in the spawn room.
 		player.set_physics_process(false)
 		var truck: Vector3 = game.get("level").truck
-		loot.global_position = truck + Vector3(3.0, 0.0, -2.5)
+		loot.global_position = truck + Vector3(1.2, 0.0, -2.5)
 		player.held_loot = loot.name
 		player.hold_point = truck
 		var value := loot.value
@@ -66,6 +67,19 @@ func _ready() -> void:
 				var seen: Dictionary = visited.get_or_add(monster.name, {})
 				seen[level.room_at(monster.global_position)] = true
 	Engine.time_scale = 1.0
+
+	# The stairs: walk a monster from the bottom landing to upstairs.
+	var climber := game.get_node("Monsters/Monster0") as Monster
+	var stairs := level.stair_rooms()
+	climber.global_position = level.anchor(stairs[0]) + Vector3.UP * 0.2
+	climber.set("_route", level.route(stairs[0], stairs[1]))
+	climber.set("_rest_left", 1000.0)  # Do not chase anyone meanwhile.
+	for i in roundi(CLIMB_SECONDS * Engine.physics_ticks_per_second):
+		await get_tree().physics_frame
+	var upstairs := level.floor_of(level.room_at(climber.global_position))
+	_check(
+		upstairs == 1, "a monster climbed the stairs (now at y %.1f)" % climber.global_position.y
+	)
 	for monster_name: String in visited:
 		var count: int = visited[monster_name].size()
 		_check(count >= ROAM_ROOMS, "%s roamed through %d rooms" % [monster_name, count])

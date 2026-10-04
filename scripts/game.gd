@@ -10,6 +10,7 @@ const Level := preload("res://scripts/level.gd")
 
 const MONSTERS := 2
 const DOOR_CLEARANCE := 2.6  ## Loot spawns at least this far from a doorway, so none is blocked.
+const BIG_ROOM := 120.0  ## Square metres; rooms this big get an extra item.
 const DEPTH_BONUS := 0.06  ## Extra value per room away from the truck, so deep runs pay.
 const QUOTA_SHARE := 0.5  ## Share of the house's total value the quota asks for.
 ## Value is a min..max range. One player holds up to Loot.MAX_FORCE (400 N),
@@ -144,45 +145,49 @@ func _host_setup() -> void:
 	var distance := level.distances_from(level.spawn_room)
 	var total := 0
 	var index := 0
-	var margin := Level.ROOM / 2.0 - 1.2
-	for room: Vector2i in distance:
-		if room == level.spawn_room:
+	for room: int in distance:
+		if room == level.spawn_room or level.is_stairs(room):
 			continue
-		var count := 1 + rng.randi() % 2 + (1 if level.neighbours(room).size() == 1 else 0)
+		var area := level.room_bounds(room).get_area()
+		var count := 1 + rng.randi() % 2 + (1 if area >= BIG_ROOM else 0)
+		count += 1 if level.neighbours(room).size() == 1 else 0  # Dead ends pay.
 		for i in count:
 			var kind := rng.randi() % KINDS.size()
 			var values: Vector2i = KINDS[kind]["value"]
 			var depth: int = distance[room]
 			var value := roundi(rng.randi_range(values.x, values.y) * (1.0 + DEPTH_BONUS * depth))
-			var spot := _clear_spot(rng, room, margin)
 			var data := {
 				"name": "Loot%d" % index,
 				"kind": kind,
 				"value": value,
-				"position": spot,
+				"position": _clear_spot(rng, room),
 			}
 			_loot.spawn(data)
 			total += value
 			index += 1
 	_set_score(0, roundi(total * QUOTA_SHARE / 10.0) * 10)
 
-	var far_first: Array = distance.keys()
-	far_first.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return distance[a] > distance[b])
+	var far_first: Array = distance.keys().filter(
+		func(room: int) -> bool: return not level.is_stairs(room)
+	)
+	far_first.sort_custom(func(a: int, b: int) -> bool: return distance[a] > distance[b])
 	for i in MONSTERS:
-		_monsters.spawn({"name": "Monster%d" % i, "position": level.room_center(far_first[i])})
+		_monsters.spawn({"name": "Monster%d" % i, "position": level.anchor(far_first[i])})
 	_players.spawn(_player_data(1))
 
 
 ## A random point in room, at least DOOR_CLEARANCE from its doorways. A piano
 ## spawned in a dead end's only doorway sealed it, monsters included.
-func _clear_spot(rng: RandomNumberGenerator, room: Vector2i, margin: float) -> Vector3:
+func _clear_spot(rng: RandomNumberGenerator, room: int) -> Vector3:
+	var bounds := level.room_bounds(room).grow(-1.0)
 	var spot := Vector3.ZERO
 	for attempt in 20:
-		var offset := Vector3(rng.randf_range(-margin, margin), 0, rng.randf_range(-margin, margin))
-		spot = level.room_center(room) + offset
+		var x := rng.randf_range(bounds.position.x, bounds.end.x)
+		var z := rng.randf_range(bounds.position.y, bounds.end.y)
+		spot = Vector3(x, level.floor_height(room), z)
 		var clear := true
-		for next in level.neighbours(room):
-			if spot.distance_to(level.door_point(room, next)) < DOOR_CLEARANCE:
+		for door in level.doors(room):
+			if spot.distance_to(door) < DOOR_CLEARANCE:
 				clear = false
 		if clear:
 			break
