@@ -20,6 +20,7 @@ var kind := ""  ## Its name in game.gd's KINDS, which picks the model.
 var size := Vector3.ONE
 var color := Color.WHITE
 var base_value := 0
+var fragility := 1.0  ## Scales the value lost per knock: glass high, books low.
 var value := 0  ## Replicated.
 
 var _last_velocity := Vector3.ZERO
@@ -28,6 +29,8 @@ var _label: Label3D
 
 func _ready() -> void:
 	add_to_group("loot")
+	# Gems and vials are small enough to tunnel through a drawer bottom in one step.
+	continuous_cd = size.x < 0.25
 	var shape := BoxShape3D.new()
 	shape.size = size
 	var collision := CollisionShape3D.new()
@@ -37,7 +40,7 @@ func _ready() -> void:
 
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.font_size = 40
+	_label.font_size = 40 if size.x >= 0.25 else 20  # Small finds get small tags.
 	_label.outline_size = 8
 	_label.position.y = size.y / 2.0 + 0.25
 	add_child(_label)
@@ -71,6 +74,6 @@ func _physics_process(_delta: float) -> void:
 	var knock := (linear_velocity - _last_velocity).length()
 	_last_velocity = linear_velocity
 	if knock > KNOCK_SPEED:
-		value = maxi(value - ceili(base_value * DAMAGE * (knock - KNOCK_SPEED)), 0)
+		value = maxi(value - ceili(base_value * DAMAGE * fragility * (knock - KNOCK_SPEED)), 0)
 		if value == 0:
 			queue_free()

@@ -27,6 +27,10 @@ Traps hit while building Sneak, with what fixed them.
 - **`Array.shuffle()` and `randi()` use the global RNG**, which is seeded differently on every
   peer. Anything in house generation must use `Level`'s own seeded RNG (`Level._shuffle`), or
   clients build a different house from the same seed.
+- **`AnimatableBody3D.sync_to_physics` ignores transforms set from script.** With it on (the
+  default), a cabinet's drawers stayed at the origin and its doors stayed shut while their hinge
+  nodes turned, and only a render showed it; the smoke test still passed because it only counted
+  items. It is off for cabinet parts, whose tweens already run in the physics step.
 - **Spawns can arrive before the spawner exists.** A client must build the game scene before it
   asks for its player; see [Network model](design.md#network-model).
 
@@ -47,6 +51,10 @@ Traps hit while building Sneak, with what fixed them.
   collide only with layer 1, not each other.
 
 ## Tooling
+
+- **Tool scenes are not checked by the hooks.** `tools/map_view.gd` kept a removed constant
+  (`HOUSE_FLOORS`) and only failed when run by hand. Run `map_view` and `showcase` after
+  changing `Level` or the models.
 
 - **gdformat writes CRLF on Windows.** Files it reformats come back with CRLF line endings, which
   the `mixed-line-ending` hook then rewrites, and exact-match edits on them fail. Run

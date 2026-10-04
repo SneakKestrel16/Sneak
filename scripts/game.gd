@@ -1,9 +1,9 @@
 extends Node3D
-## One co-op run. Hosts or joins (Net); the host rolls the house's seed, and
-## each joining client builds the same house from it before asking for its
+## One co-op run. Hosts or joins (Net); the host rolls the site's seed, and
+## each joining client builds the same site from it before asking for its
 ## player. The host spawns players, loot and monsters through
-## MultiplayerSpawners so late joiners get them too. Bank loot in the truck
-## until the quota is met.
+## MultiplayerSpawners so late joiners get them too, and fills cupboards and
+## drawers as they are opened. Bank loot in the truck until the quota is met.
 ## How authority is split between peers is in docs/design.md.
 
 const Level := preload("res://scripts/level.gd")
@@ -14,9 +14,12 @@ const BIG_ROOM := 120.0  ## Square metres; rooms this big get an extra item.
 ## Extra value per step (room or yard cell) away from the truck, so deep runs pay.
 const DEPTH_BONUS := 0.02
 const YARD_LOOT := 0.02  ## Chance an open yard cell has something worth taking.
-const QUOTA_SHARE := 0.5  ## Share of the house's total value the quota asks for.
+const QUOTA_SHARE := 0.5  ## Share of the loot lying out that the quota asks for.
+const EMPTY_CHANCE := 0.2  ## Chance an opened door or drawer holds nothing.
 ## Value is a min..max range. One player holds up to Loot.MAX_FORCE (400 N),
-## so the piano (70 kg, ~690 N to lift) takes two.
+## so the piano (70 kg, ~690 N to lift) takes two. "small" kinds are only found
+## in cupboards and drawers, in one of their "tints". "fragility" scales the
+## value lost per knock (default 1).
 const KINDS: Array[Dictionary] = [
 	{
 		"name": "vase",
@@ -53,6 +56,46 @@ const KINDS: Array[Dictionary] = [
 		"value": Vector2i(500, 800),
 		"color": Color(0.1, 0.1, 0.1),
 	},
+	{
+		"name": "gem",
+		"size": Vector3(0.12, 0.12, 0.12),
+		"mass": 0.1,
+		"value": Vector2i(250, 500),
+		"color": Color(0.85, 0.1, 0.25),
+		"tints": [Color(0.85, 0.1, 0.25), Color(0.1, 0.75, 0.35), Color(0.15, 0.35, 0.95)],
+		"small": true,
+		"fragility": 0.3,  # Hard stone: knocks barely mark it.
+	},
+	{
+		"name": "necklace",
+		"size": Vector3(0.22, 0.04, 0.2),
+		"mass": 0.2,
+		"value": Vector2i(180, 400),
+		"color": Color(0.85, 0.66, 0.2),
+		"tints": [Color(0.85, 0.66, 0.2), Color(0.8, 0.8, 0.82)],
+		"small": true,
+		"fragility": 0.5,
+	},
+	{
+		"name": "book",
+		"size": Vector3(0.18, 0.05, 0.25),
+		"mass": 0.8,
+		"value": Vector2i(20, 90),
+		"color": Color(0.45, 0.12, 0.1),
+		"tints": [Color(0.45, 0.12, 0.1), Color(0.12, 0.2, 0.4), Color(0.15, 0.3, 0.15)],
+		"small": true,
+		"fragility": 0.2,
+	},
+	{
+		"name": "vial",
+		"size": Vector3(0.06, 0.16, 0.06),
+		"mass": 0.15,
+		"value": Vector2i(120, 260),
+		"color": Color(0.3, 0.9, 0.5),
+		"tints": [Color(0.3, 0.9, 0.5), Color(0.8, 0.2, 0.9), Color(0.95, 0.6, 0.1)],
+		"small": true,
+		"fragility": 3.0,  # Glass: handle with care.
+	},
 ]
 const CONTROLS := {
 	"move_forward": KEY_W,
@@ -62,6 +105,7 @@ const CONTROLS := {
 	"sprint": KEY_SHIFT,
 	"crouch": KEY_CTRL,
 	"jump": KEY_SPACE,
+	"interact": KEY_E,
 }
 
 var banked := 0
@@ -69,6 +113,9 @@ var quota := 0
 var level: Level  ## Built once the seed is known (at once on the host).
 
 var _seed := 0
+var _next_loot := 0  ## Loot node names must be unique for replication.
+var _host_rng := RandomNumberGenerator.new()  ## What cabinets hold; host only.
+var _cabinets: Array[Cabinet] = []
 
 var _players: MultiplayerSpawner
 var _loot: MultiplayerSpawner
@@ -76,6 +123,7 @@ var _monsters: MultiplayerSpawner
 var _score: Label
 var _message: Label
 var _message_left := 0.0
+var _prompt: Label
 
 
 func _ready() -> void:
@@ -128,6 +176,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			Net.stop("")
 
 
+## Shows a hint under the crosshair, or hides it with "".
+func prompt(text: String) -> void:
+	_prompt.text = text
+
+
+## Asks the host to open a cabinet's door or drawer (called by the local player).
+func request_open(cabinet: int, part: int) -> void:
+	_request_open.rpc_id(1, cabinet, part)
+
+
 ## Shows text in the middle of the screen for a few seconds.
 func flash(text: String, seconds := 3.0) -> void:
 	_message.text = text
@@ -137,16 +195,31 @@ func flash(text: String, seconds := 3.0) -> void:
 func _build_level() -> void:
 	level = Level.new(_seed)
 	level.build(self).body_entered.connect(_on_truck_body_entered)
+	var holder := Node3D.new()
+	holder.name = "Cabinets"
+	add_child(holder)
+	for i in level.furniture.size():
+		var piece := level.furniture[i]
+		var cabinet := Cabinet.new()
+		cabinet.name = "Cabinet%d" % i
+		cabinet.index = i
+		cabinet.type = piece["type"]
+		cabinet.position = piece["position"]
+		cabinet.rotation.y = piece["yaw"]
+		holder.add_child(cabinet)
+		_cabinets.append(cabinet)
 
 
-## Loot goes in every room but the truck's: more in dead ends, worth more the
-## deeper it is. Monsters start in the rooms farthest from the truck.
+## Loot lies out in every room but the stairs: more in dead ends, worth more
+## the deeper it is; a little in the yard. Cupboards and drawers are filled when
+## opened. Monsters start in the indoor rooms farthest from the truck.
 func _host_setup() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = _seed
+	_host_rng.seed = _seed + 1
+	var big := _kinds(false)
 	var distance := level.distances_from(level.spawn_room)
 	var total := 0
-	var index := 0
 	for room: int in distance:
 		if room == level.spawn_room or level.is_stairs(room) or level.kind(room) == "path":
 			continue
@@ -156,19 +229,19 @@ func _host_setup() -> void:
 		if level.is_outdoors(room):
 			count = 1 if rng.randf() < YARD_LOOT else 0
 		for i in count:
-			var kind := rng.randi() % KINDS.size()
+			var kind: int = big[rng.randi() % big.size()]
 			var values: Vector2i = KINDS[kind]["value"]
 			var depth: int = distance[room]
 			var value := roundi(rng.randi_range(values.x, values.y) * (1.0 + DEPTH_BONUS * depth))
 			var data := {
-				"name": "Loot%d" % index,
+				"name": "Loot%d" % _next_loot,
 				"kind": kind,
 				"value": value,
 				"position": _clear_spot(rng, room),
 			}
 			_loot.spawn(data)
 			total += value
-			index += 1
+			_next_loot += 1
 	_set_score(0, roundi(total * QUOTA_SHARE / 10.0) * 10)
 
 	var far_first: Array = distance.keys().filter(
@@ -180,8 +253,9 @@ func _host_setup() -> void:
 	_players.spawn(_player_data(1))
 
 
-## A random point in room, at least DOOR_CLEARANCE from its doorways. A piano
-## spawned in a dead end's only doorway sealed it, monsters included.
+## A random point in room, at least DOOR_CLEARANCE from its doorways and clear
+## of furniture. A piano spawned in a dead end's only doorway sealed it,
+## monsters included.
 func _clear_spot(rng: RandomNumberGenerator, room: int) -> Vector3:
 	var bounds := level.room_bounds(room).grow(-1.0)
 	var spot := Vector3.ZERO
@@ -192,6 +266,9 @@ func _clear_spot(rng: RandomNumberGenerator, room: int) -> Vector3:
 		var clear := true
 		for door in level.doors(room):
 			if spot.distance_to(door) < DOOR_CLEARANCE:
+				clear = false
+		for piece in level.furniture_in(room):
+			if spot.distance_to(piece["position"]) < 1.5:
 				clear = false
 		if clear:
 			break
@@ -237,7 +314,8 @@ func _spawn_loot(data: Dictionary) -> Node:
 	loot.kind = kind["name"]
 	loot.size = kind["size"]
 	loot.mass = kind["mass"]
-	loot.color = kind["color"]
+	loot.color = data.get("color", kind["color"])
+	loot.fragility = kind.get("fragility", 1.0)
 	loot.base_value = data["value"]
 	loot.value = data["value"]
 	# On change: most loot sits still, and there is a lot of it.
@@ -255,18 +333,24 @@ func _spawn_monster(data: Dictionary) -> Node:
 	return monster
 
 
-## Joining, step 1: a connected client asks for the house's seed.
+## Joining, step 1: a connected client asks for the site's seed and which
+## cabinet doors and drawers are already open.
 @rpc("any_peer", "reliable")
 func _request_world() -> void:
-	_receive_world.rpc_id(multiplayer.get_remote_sender_id(), _seed)
+	var opened := PackedInt32Array()
+	for cabinet in _cabinets:
+		opened.append(cabinet.opened)
+	_receive_world.rpc_id(multiplayer.get_remote_sender_id(), _seed, opened)
 
 
-## Step 2: the client builds the same house, then asks for its player, so it
+## Step 2: the client builds the same site, then asks for its player, so it
 ## never spawns over a floor that is not there yet.
 @rpc("authority", "reliable")
-func _receive_world(seed_value: int) -> void:
+func _receive_world(seed_value: int, opened: PackedInt32Array) -> void:
 	_seed = seed_value
 	_build_level()
+	for i in opened.size():
+		_cabinets[i].set_opened(opened[i], false)
 	_client_ready.rpc_id(1)
 
 
@@ -293,6 +377,58 @@ func _set_score(new_banked: int, new_quota: int) -> void:
 	_score.text = "Banked $%d / $%d" % [banked, quota]
 	if quota > 0 and banked >= quota and not was_met:
 		flash("Quota met! Keep looting or call it a night.")
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _request_open(cabinet: int, part: int) -> void:
+	if not multiplayer.is_server() or cabinet < 0 or cabinet >= _cabinets.size():
+		return
+	var target := _cabinets[cabinet]
+	var bit := 1 << part
+	if part < 0 or part >= target.part_count() or (target.opened & bit) != 0:
+		return
+	_set_cabinet.rpc(cabinet, target.opened | bit)
+	# Fill it once the door has swung or the drawer slid out.
+	var fill := _fill_cabinet.bind(cabinet, part)
+	get_tree().create_timer(Cabinet.OPEN_TIME + 0.1).timeout.connect(fill)
+
+
+@rpc("authority", "call_local", "reliable")
+func _set_cabinet(cabinet: int, mask: int) -> void:
+	_cabinets[cabinet].set_opened(mask, true)
+
+
+## Puts small valuables (gems, necklaces, books, vials) in a freshly opened
+## door or drawer, sometimes nothing. Host only.
+func _fill_cabinet(cabinet: int, part: int) -> void:
+	if _host_rng.randf() < EMPTY_CHANCE:
+		return
+	var spots := _cabinets[cabinet].content_spots(part)
+	var small := _kinds(true)
+	for i in _host_rng.randi_range(1, spots.size()):
+		var kind: int = small[_host_rng.randi() % small.size()]
+		var info: Dictionary = KINDS[kind]
+		var values: Vector2i = info["value"]
+		var tints: Array = info["tints"]
+		var size: Vector3 = info["size"]
+		var data := {
+			"name": "Loot%d" % _next_loot,
+			"kind": kind,
+			"value": _host_rng.randi_range(values.x, values.y),
+			"position": spots[i] + Vector3.UP * (size.y / 2.0 + 0.01),
+			"color": tints[_host_rng.randi() % tints.size()],
+		}
+		_loot.spawn(data)
+		_next_loot += 1
+
+
+## Indexes into KINDS of the small (cabinet) kinds, or of the rest.
+static func _kinds(small: bool) -> Array[int]:
+	var found: Array[int] = []
+	for i in KINDS.size():
+		if KINDS[i].get("small", false) == small:
+			found.append(i)
+	return found
 
 
 func _on_truck_body_entered(body: Node3D) -> void:
@@ -332,8 +468,15 @@ func _build_hud() -> void:
 	_message.visible = false
 	hud.add_child(_message)
 
+	_prompt = Label.new()
+	_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_prompt.position.y += 36
+	_prompt.add_theme_font_size_override("font_size", 22)
+	hud.add_child(_prompt)
+
 	var hint := Label.new()
-	hint.text = "Hold LMB: drag · Wheel: distance · Ctrl: sneak · Esc: mouse / leave"
+	hint.text = "Hold LMB: drag · Wheel: distance · E: open · Ctrl: sneak · Esc: mouse / leave"
 	hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	hint.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hint.position.y -= 40

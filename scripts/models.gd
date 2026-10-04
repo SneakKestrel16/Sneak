@@ -30,6 +30,14 @@ static func loot(kind: String, size: Vector3, color: Color) -> Node3D:
 			_clock(root, size, color)
 		"piano":
 			_piano(root, size)
+		"gem":
+			_gem(root, size, color)
+		"necklace":
+			_necklace(root, size, color)
+		"book":
+			_book(root, size, color)
+		"vial":
+			_vial(root, size, color)
 		_:
 			part(root, _box(size), textured(color), Vector3.ZERO)
 	return root
@@ -295,3 +303,72 @@ static func _piano(root: Node3D, size: Vector3) -> void:
 	for x: float in [-0.12, 0.12]:
 		var pedal := Vector3(0.05, 0.015, 0.12)
 		part(root, _box(pedal), brass, Vector3(x, bottom + 0.05, depth - size.z / 2.0 + 0.06))
+
+
+## A cut stone: a four-sided double pyramid that glows faintly, so it catches
+## the eye in a dark drawer.
+static func _gem(root: Node3D, size: Vector3, color: Color) -> MeshInstance3D:
+	var stone := SphereMesh.new()
+	stone.radius = size.x / 2.0
+	stone.height = size.y
+	stone.radial_segments = 4
+	stone.rings = 1
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.05
+	material.metallic = 0.3
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = 0.6
+	return part(root, stone, material, Vector3.ZERO)
+
+
+## A chain lying in a loop with a red stone hanging at the front.
+static func _necklace(root: Node3D, size: Vector3, color: Color) -> void:
+	var metal := textured(color, Vector2.ONE, 0.2, 0.25, METAL)
+	var chain := TorusMesh.new()
+	chain.outer_radius = size.x / 2.0
+	chain.inner_radius = size.x / 2.0 - 0.012
+	part(root, chain, metal, Vector3(0, -size.y / 2.0 + 0.008, 0))
+	var pendant := _gem(root, Vector3.ONE * 0.04, Color(0.7, 0.05, 0.15))
+	pendant.position = Vector3(0, -size.y / 2.0 + 0.02, size.z / 2.0)
+
+
+## A hardback: coloured boards round a block of pale pages.
+static func _book(root: Node3D, size: Vector3, color: Color) -> void:
+	var cover := textured(color, Vector2.ONE, 0.25, 0.7, 0.0, 0.08)
+	var pages := textured(Color(0.9, 0.86, 0.75), Vector2(8, 1), 0.08, 0.9)
+	var board := Vector3(size.x, 0.006, size.z)
+	for y: float in [-1.0, 1.0]:
+		part(root, _box(board), cover, Vector3(0, y * (size.y - board.y) / 2.0, 0))
+	part(root, _box(Vector3(0.008, size.y, size.z)), cover, Vector3(-size.x / 2.0 + 0.004, 0, 0))
+	var block := Vector3(size.x - 0.012, size.y - 0.012, size.z - 0.008)
+	part(root, _box(block), pages, Vector3(0.002, 0, 0))
+
+
+## A stoppered glass tube of glowing liquid.
+static func _vial(root: Node3D, size: Vector3, color: Color) -> void:
+	var r := size.x / 2.0
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.8, 0.9, 1.0, 0.25)
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.roughness = 0.05
+	var body_height := size.y * 0.8
+	var body_y := -size.y / 2.0 + body_height / 2.0
+	part(root, _cylinder(r, r, body_height), glass, Vector3(0, body_y, 0))
+	var liquid := _glow(color, 1.5)
+	var fill := body_height * 0.65
+	part(
+		root,
+		_cylinder(r * 0.8, r * 0.8, fill),
+		liquid,
+		Vector3(0, -size.y / 2.0 + fill / 2.0 + 0.004, 0)
+	)
+	var cork := textured(Color(0.6, 0.45, 0.28), Vector2.ONE, 0.3, 0.9)
+	var cork_height := size.y - body_height
+	part(
+		root,
+		_cylinder(r * 0.75, r * 0.85, cork_height),
+		cork,
+		Vector3(0, size.y / 2.0 - cork_height / 2.0, 0)
+	)

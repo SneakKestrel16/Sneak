@@ -12,8 +12,11 @@ func _ready() -> void:
 		if arg.begins_with("--out="):
 			out = arg.trim_prefix("--out=")
 
+	# Big loot in a row, the small cabinet finds in front, opened furniture behind.
 	var x := -3.2
+	var small_x := -1.0
 	for kind: Dictionary in GAME.KINDS:
+		var small: bool = kind.get("small", false)
 		var loot := Loot.new()
 		loot.kind = kind["name"]
 		loot.size = kind["size"]
@@ -21,14 +24,25 @@ func _ready() -> void:
 		loot.value = kind["value"].y
 		loot.base_value = loot.value
 		loot.freeze = true
-		loot.position = Vector3(x + kind["size"].x / 2.0, kind["size"].y / 2.0, 0)
+		if small:
+			loot.position = Vector3(small_x, kind["size"].y / 2.0, 1.6)
+			small_x += 0.45
+		else:
+			loot.position = Vector3(x + kind["size"].x / 2.0, kind["size"].y / 2.0, 0)
+			x += kind["size"].x + 0.35
 		add_child(loot)
-		x += kind["size"].x + 0.35
 	var monster := Monster.new()
 	monster.position = Vector3(x + 0.6, 0, 0.3)
 	monster.rotation.y = PI * 0.85  # Turn its face (-Z) toward the camera.
 	add_child(monster)
 	monster.set_physics_process(false)
+
+	for type in Cabinet.SIZES.size():
+		var cabinet := Cabinet.new()
+		cabinet.type = type
+		cabinet.position = Vector3(-3.4 + type * 1.3, 0, 1.0)
+		add_child(cabinet)
+		cabinet.set_opened(0xFF, false)
 
 	var floor_mesh := BoxMesh.new()
 	floor_mesh.size = Vector3(20, 0.1, 10)
@@ -51,6 +65,9 @@ func _ready() -> void:
 	var camera := Camera3D.new()
 	camera.position = Vector3(0.6, 1.6, 5.2)
 	camera.rotation.x = -0.2
+	if "--close" in OS.get_cmdline_user_args():  # The small finds and the furniture.
+		camera.position = Vector3(-1.0, 1.3, 3.2)
+		camera.rotation.x = -0.32
 	camera.fov = 60
 	add_child(camera)
 

@@ -1,8 +1,9 @@
 extends Node
 ## Headless smoke test, run by tools/check.sh. Hosts a session; checks every
-## room of the maze is reachable, drags one loot item into the truck with a
-## scripted grab, and checks the monsters roam through several rooms rather
-## than sticking. Exits 0 on pass, 1 on fail.
+## room of the site is reachable, drags one loot item into the truck with a
+## scripted grab, checks the monsters roam through several rooms rather than
+## sticking and can climb the stairs, and opens furniture to find valuables.
+## Exits 0 on pass, 1 on fail.
 
 const Level := preload("res://scripts/level.gd")
 
@@ -70,7 +71,7 @@ func _ready() -> void:
 
 	# The stairs: walk a monster from the bottom landing to upstairs.
 	var climber := game.get_node("Monsters/Monster0") as Monster
-	var stairs := level.stair_rooms()
+	var stairs := level.stairwell(0)
 	climber.global_position = level.anchor(stairs[0]) + Vector3.UP * 0.2
 	climber.set("_route", level.route(stairs[0], stairs[1]))
 	climber.set("_rest_left", 1000.0)  # Do not chase anyone meanwhile.
@@ -83,6 +84,33 @@ func _ready() -> void:
 	for monster_name: String in visited:
 		var count: int = visited[monster_name].size()
 		_check(count >= ROAM_ROOMS, "%s roamed through %d rooms" % [monster_name, count])
+
+	# Cupboards and drawers: open every part of the first few, as players would,
+	# and check valuables appear inside.
+	var cabinets := game.get_node("Cabinets").get_children()
+	_check(cabinets.size() > 0, "furniture stands in the rooms (%d pieces)" % cabinets.size())
+	var before := get_tree().get_nodes_in_group("loot").size()
+	for cabinet: Cabinet in cabinets.slice(0, 4):
+		for part in cabinet.part_count():
+			game.call("request_open", cabinet.index, part)
+	for i in 90:
+		await get_tree().physics_frame
+	var all_loot := get_tree().get_nodes_in_group("loot")
+	var found := all_loot.size() - before
+	# They should still be in their drawers and on their shelves, not on the floor
+	# below or through the carcass.
+	var inside := 0
+	for item: Loot in all_loot.slice(before):
+		for cabinet: Cabinet in cabinets.slice(0, 4):
+			var local := cabinet.to_local(item.global_position)
+			if local.y > 0.05 and absf(local.x) < 0.7 and local.z > -0.3 and local.z < 0.6:
+				inside += 1
+				break
+	_check(inside == found, "%d of %d valuables stayed in their furniture" % [inside, found])
+	var opened := cabinets.slice(0, 4).all(
+		func(cabinet: Cabinet) -> bool: return cabinet.opened != 0
+	)
+	_check(opened and found > 0, "opening cupboards and drawers turned up %d valuables" % found)
 	print("SMOKE FAIL" if _failed else "SMOKE PASS")
 	get_tree().quit(1 if _failed else 0)
 

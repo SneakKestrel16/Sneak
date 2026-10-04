@@ -1,6 +1,7 @@
 extends Node3D
 ## Renders one storey of a generated house from above, with the storeys above
-## it hidden, doorways marked red and even light, and saves a PNG. For checking
+## it hidden, doorways marked red, furniture orange and even light, and saves a
+## PNG. For checking
 ## what the generator makes; run by hand:
 ##   godot --path . res://tools/map_view.tscn -- --seed=N --floor=0 --out=C:/path/map.png
 
@@ -21,7 +22,7 @@ func _ready() -> void:
 	var level := Level.new(seed_value)
 	level.build(self)
 	get_node("Roof").queue_free()
-	for above in range(storey + 1, Level.HOUSE_FLOORS):
+	for above in range(storey + 1, Level.FLOORS):
 		get_node("Floor%d" % above).queue_free()
 	# Even light from above instead of the house's dim lamps.
 	for child in find_children("*", "OmniLight3D", true, false):
@@ -42,6 +43,20 @@ func _ready() -> void:
 				door.mesh = marker
 				door.position = point + Vector3.UP * (Level.WALL_HEIGHT + 0.3)
 				add_child(door)
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.85, 0.55, 0.2)
+	wood.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for piece in level.furniture:
+		if level.floor_of(piece["room"]) == storey:
+			var mesh := BoxMesh.new()
+			var size: Vector3 = Cabinet.SIZES[piece["type"]]
+			mesh.size = Vector3(size.x, 0.4, size.z)
+			mesh.material = wood
+			var marker_node := MeshInstance3D.new()
+			marker_node.mesh = mesh
+			marker_node.position = piece["position"] + Vector3.UP * (Level.WALL_HEIGHT + 0.2)
+			marker_node.rotation.y = piece["yaw"]
+			add_child(marker_node)
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(-1.2, 0.3, 0)
 	add_child(sun)

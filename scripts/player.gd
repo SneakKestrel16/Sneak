@@ -3,6 +3,7 @@ extends CharacterBody3D
 ## First-person looter. WASD to move, Shift to sprint, Ctrl to crouch (slow,
 ## but monsters only notice you up close), Space to jump. Hold the left mouse
 ## button on loot to drag it; the mouse wheel pulls it nearer or pushes it out.
+## E opens the cupboard door or drawer under the crosshair.
 ##
 ## Each player is driven by its own peer and replicated to the others. The host
 ## owns loot physics, so grabbing only publishes which loot this player holds
@@ -27,6 +28,7 @@ var held_loot := ""  ## Name of the loot being dragged, or "".
 var hold_point := Vector3.ZERO  ## Where the dragged loot should go, in world space.
 
 var _hold_distance := 2.0
+var _shown_prompt := ""
 var _head: Node3D
 var _camera: Camera3D
 
@@ -114,6 +116,7 @@ func _physics_process(delta: float) -> void:
 	velocity.z = direction.z * speed
 	move_and_slide()
 	_update_grab()
+	_update_interact()
 
 
 func _update_grab() -> void:
@@ -142,3 +145,24 @@ func caught(spawn: Vector3) -> void:
 	held_loot = ""
 	if is_multiplayer_authority():
 		get_tree().call_group("hud", "flash", "You were caught!")
+
+
+## Looks for a shut cupboard door or drawer under the crosshair: shows a prompt
+## for it, and E asks the host to open it.
+func _update_interact() -> void:
+	var from := _camera.global_position
+	var to := from - _camera.global_basis.z * GRAB_RANGE
+	var query := PhysicsRayQueryParameters3D.create(from, to, 0xFFFFFFFF, [get_rid()])
+	var body := get_world_3d().direct_space_state.intersect_ray(query).get("collider") as Node
+	var cabinet: Cabinet = null
+	var node := body
+	while node and not node is Cabinet:
+		node = node.get_parent()
+	cabinet = node as Cabinet
+	var closed := cabinet != null and cabinet.is_closed_part(body)
+	var text := "[E] Open" if closed else ""
+	if text != _shown_prompt:
+		_shown_prompt = text
+		get_tree().call_group("hud", "prompt", text)
+	if closed and Input.is_action_just_pressed("interact"):
+		get_tree().call_group("hud", "request_open", cabinet.index, int(body.get_meta("part")))
