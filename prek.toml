@@ -1,0 +1,18 @@
+# Pre-commit hooks for Sneak. Install with `prek install`; run by hand from Git Bash.
+# Add one hook per build/test project and per language linter as code lands, each scoped
+# with `files` to the paths that can break it (plus shared config like .editorconfig).
+#:schema https://www.schemastore.org/prek.json
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    # LF everywhere: .editorconfig says so, and mixed endings make diffs noisy.
+    { id = "mixed-line-ending", args = ["--fix=lf"] },
+    { id = "check-merge-conflict" },
+    { id = "check-added-large-files" },
+]
+
+# ponytail: no docs link/anchor checker or sensitive-file guard yet; add them with the first
+# language toolchain (e.g. a script under tools/ run by the repo's .venv) rather than a new dependency.
