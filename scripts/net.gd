@@ -48,13 +48,18 @@ func stop(reason: String) -> void:
 
 
 ## Adds a MultiplayerSynchronizer that sends node's properties from its
-## authority to everyone else every network frame.
-func replicate(node: Node, properties: Array[String]) -> void:
+## authority to everyone else: every network frame by default, or only when
+## they change (REPLICATION_MODE_ON_CHANGE).
+func replicate(
+	node: Node,
+	properties: Array[String],
+	mode := SceneReplicationConfig.REPLICATION_MODE_ALWAYS,
+) -> void:
 	var config := SceneReplicationConfig.new()
 	for property in properties:
 		var path := NodePath(".:" + property)
 		config.add_property(path)
-		config.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
+		config.property_set_replication_mode(path, mode)
 	var synchronizer := MultiplayerSynchronizer.new()
 	synchronizer.name = "Sync"  # Same path on every peer; see docs/gotchas.md.
 	synchronizer.replication_config = config

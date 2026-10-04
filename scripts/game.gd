@@ -1,12 +1,16 @@
 extends Node3D
-## One co-op run. Builds the house, hosts or joins (Net), then the host spawns
-## players, loot and the monster through MultiplayerSpawners so late joiners
-## get them too. Bank loot in the truck until the quota is met.
+## One co-op run. Hosts or joins (Net); the host rolls the house's seed, and
+## each joining client builds the same house from it before asking for its
+## player. The host spawns players, loot and monsters through
+## MultiplayerSpawners so late joiners get them too. Bank loot in the truck
+## until the quota is met.
 ## How authority is split between peers is in docs/design.md.
 
 const Level := preload("res://scripts/level.gd")
 
-const LOOT_PER_ROOM := 3
+const MONSTERS := 2
+const DOOR_CLEARANCE := 2.6  ## Loot spawns at least this far from a doorway, so none is blocked.
+const DEPTH_BONUS := 0.06  ## Extra value per room away from the truck, so deep runs pay.
 const QUOTA_SHARE := 0.5  ## Share of the house's total value the quota asks for.
 ## Value is a min..max range. One player holds up to Loot.MAX_FORCE (400 N),
 ## so the piano (70 kg, ~690 N to lift) takes two.
@@ -59,6 +63,9 @@ const CONTROLS := {
 
 var banked := 0
 var quota := 0
+var level: Level  ## Built once the seed is known (at once on the host).
+
+var _seed := 0
 
 var _players: MultiplayerSpawner
 var _loot: MultiplayerSpawner
@@ -77,8 +84,6 @@ func _ready() -> void:
 			key.physical_keycode = CONTROLS[action]
 			InputMap.action_add_event(action, key)
 
-	var truck := Level.build(self)
-	truck.body_entered.connect(_on_truck_body_entered)
 	_players = _spawner("Players", _spawn_player)
 	_loot = _spawner("Loot", _spawn_loot)
 	_monsters = _spawner("Monsters", _spawn_monster)
@@ -86,7 +91,7 @@ func _ready() -> void:
 
 	multiplayer.peer_connected.connect(func(id: int) -> void: print("[net] peer %d joined" % id))
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	multiplayer.connected_to_server.connect(func() -> void: _client_ready.rpc_id(1))
+	multiplayer.connected_to_server.connect(func() -> void: _request_world.rpc_id(1))
 
 	var error := Net.start()
 	if error != OK:
@@ -96,6 +101,12 @@ func _ready() -> void:
 		Net.stop.call_deferred(reason)
 		return
 	if multiplayer.is_server():
+		_seed = randi()
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--seed="):
+				_seed = arg.trim_prefix("--seed=").to_int()  # Replays a house, e.g. a failing test.
+		print("[level] seed %d" % _seed)
+		_build_level()
 		_host_setup()
 	else:
 		flash("Connecting to %s:%d..." % [Net.address, Net.port], 10.0)
@@ -120,32 +131,67 @@ func flash(text: String, seconds := 3.0) -> void:
 	_message_left = seconds
 
 
+func _build_level() -> void:
+	level = Level.new(_seed)
+	level.build(self).body_entered.connect(_on_truck_body_entered)
+
+
+## Loot goes in every room but the truck's: more in dead ends, worth more the
+## deeper it is. Monsters start in the rooms farthest from the truck.
 func _host_setup() -> void:
 	var rng := RandomNumberGenerator.new()
+	rng.seed = _seed
+	var distance := level.distances_from(level.spawn_room)
 	var total := 0
 	var index := 0
-	for room in Level.loot_rooms():
-		for i in LOOT_PER_ROOM:
+	var margin := Level.ROOM / 2.0 - 1.2
+	for room: Vector2i in distance:
+		if room == level.spawn_room:
+			continue
+		var count := 1 + rng.randi() % 2 + (1 if level.neighbours(room).size() == 1 else 0)
+		for i in count:
 			var kind := rng.randi() % KINDS.size()
 			var values: Vector2i = KINDS[kind]["value"]
-			var value := rng.randi_range(values.x, values.y)
-			var spot := Vector3(rng.randf_range(-3.5, 3.5), 1.0, rng.randf_range(-3.5, 3.5))
-			(
-				_loot
-				. spawn(
-					{
-						"name": "Loot%d" % index,
-						"kind": kind,
-						"value": value,
-						"position": Level.room_center(room) + spot,
-					}
-				)
-			)
+			var depth: int = distance[room]
+			var value := roundi(rng.randi_range(values.x, values.y) * (1.0 + DEPTH_BONUS * depth))
+			var spot := _clear_spot(rng, room, margin)
+			var data := {
+				"name": "Loot%d" % index,
+				"kind": kind,
+				"value": value,
+				"position": spot,
+			}
+			_loot.spawn(data)
 			total += value
 			index += 1
 	_set_score(0, roundi(total * QUOTA_SHARE / 10.0) * 10)
-	_monsters.spawn(Level.room_center(Level.MONSTER_ROOM))
-	_players.spawn(1)
+
+	var far_first: Array = distance.keys()
+	far_first.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return distance[a] > distance[b])
+	for i in MONSTERS:
+		_monsters.spawn({"name": "Monster%d" % i, "position": level.room_center(far_first[i])})
+	_players.spawn(_player_data(1))
+
+
+## A random point in room, at least DOOR_CLEARANCE from its doorways. A piano
+## spawned in a dead end's only doorway sealed it, monsters included.
+func _clear_spot(rng: RandomNumberGenerator, room: Vector2i, margin: float) -> Vector3:
+	var spot := Vector3.ZERO
+	for attempt in 20:
+		var offset := Vector3(rng.randf_range(-margin, margin), 0, rng.randf_range(-margin, margin))
+		spot = level.room_center(room) + offset
+		var clear := true
+		for next in level.neighbours(room):
+			if spot.distance_to(level.door_point(room, next)) < DOOR_CLEARANCE:
+				clear = false
+		if clear:
+			break
+	return spot + Vector3.UP
+
+
+func _player_data(id: int) -> Dictionary:
+	var row := _players.get_parent().get_child_count() - 1  # Minus the spawner.
+	return {"id": id, "position": level.spawn + Vector3(float(row % 4) - 1.5, 0, 0)}
 
 
 func _spawner(container_name: String, spawn: Callable) -> MultiplayerSpawner:
@@ -161,10 +207,13 @@ func _spawner(container_name: String, spawn: Callable) -> MultiplayerSpawner:
 	return spawner
 
 
-func _spawn_player(id: int) -> Node:
+# Spawn functions run on every peer, maybe before that peer has built the house,
+# so everything they need comes in the spawn data.
+func _spawn_player(data: Dictionary) -> Node:
+	var id: int = data["id"]
 	var player := Player.new()
 	player.name = str(id)
-	player.position = Level.SPAWN + Vector3(float(id % 5) - 2.0, 0, 0)
+	player.position = data["position"]
 	Net.replicate(player, ["position", "rotation", "pitch", "crouching", "held_loot", "hold_point"])
 	player.set_multiplayer_authority(id)
 	print("[spawn] player %d" % id)
@@ -182,24 +231,41 @@ func _spawn_loot(data: Dictionary) -> Node:
 	loot.color = kind["color"]
 	loot.base_value = data["value"]
 	loot.value = data["value"]
-	Net.replicate(loot, ["position", "rotation", "value"])
+	# On change: most loot sits still, and there is a lot of it.
+	var on_change := SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE
+	Net.replicate(loot, ["position", "rotation", "value"], on_change)
 	return loot
 
 
-func _spawn_monster(at: Vector3) -> Node:
+func _spawn_monster(data: Dictionary) -> Node:
 	var monster := Monster.new()
-	monster.name = "Monster"
-	monster.position = at
+	monster.name = data["name"]
+	monster.position = data["position"]
+	monster.level = level  # Null on a client that has not built yet; clients never think.
 	Net.replicate(monster, ["position", "rotation"])
 	return monster
 
 
-## A joining client asks for its player once its copy of the game is built,
-## so spawns never arrive before its spawners exist.
+## Joining, step 1: a connected client asks for the house's seed.
+@rpc("any_peer", "reliable")
+func _request_world() -> void:
+	_receive_world.rpc_id(multiplayer.get_remote_sender_id(), _seed)
+
+
+## Step 2: the client builds the same house, then asks for its player, so it
+## never spawns over a floor that is not there yet.
+@rpc("authority", "reliable")
+func _receive_world(seed_value: int) -> void:
+	_seed = seed_value
+	_build_level()
+	_client_ready.rpc_id(1)
+
+
+## Step 3: the host spawns the player and sends the score.
 @rpc("any_peer", "reliable")
 func _client_ready() -> void:
 	var id := multiplayer.get_remote_sender_id()
-	_players.spawn(id)
+	_players.spawn(_player_data(id))
 	_set_score.rpc_id(id, banked, quota)
 	_welcome.rpc_id(id)
 

@@ -21,8 +21,24 @@ Traps hit while building Sneak, with what fixed them.
 - **Fully metallic materials render near-black in the house.** Metal shows reflections, and the
   house has no sky or reflection probes, so gold frames came out dark brown in the first
   showcase render. `Models.METAL` keeps gold and brass at 0.45.
+- **`Engine.time_scale` does not add physics steps.** It stretches each step's delta, so
+  waiting N physics frames still takes N/60 real seconds but simulates N/60 × scale. The smoke
+  test's roam check divides its frame count by the speed-up.
 - **Spawns can arrive before the spawner exists.** A client must build the game scene before it
   asks for its player; see [Network model](design.md#network-model).
+
+## Gameplay
+
+- **Doorways must clear the monster's capsule.** The first doors were 2.3 m and the monster's
+  collision capsule is 2.4 m, so it stood still under every lintel without touching a *wall*
+  (`is_on_wall()` stayed false). That was true of the original 3x3 house too, so its monster
+  never left its first room. Found by tracing monster positions in the smoke test; doors are now
+  2.6 m and the smoke test fails if a monster passes through fewer than three rooms.
+- **Loot spawned in a doorway can seal a dead end.** With random placement, about half of all
+  seeds trapped a monster: a piano and three clocks in the only doorway of a dead end, or a heavy
+  item it slid along forever. Speed-based stuck checks missed the sliding (it was still moving),
+  so stuck now means "no closer to the waypoint", it detours sideways, it shoves loot, and loot
+  spawns clear of doorways. Replay a house with `-- --seed=N`; the host logs `[level] seed N`.
 
 ## Tooling
 

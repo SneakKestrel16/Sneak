@@ -17,7 +17,7 @@ trap 'rm -f "$log"' EXIT
 status=$?
 # Its own port, so a running game does not block it. --quit-after caps the run
 # (in frames) so a broken test fails instead of hanging.
-"$godot" --headless --quit-after 1200 res://tests/smoke.tscn -- --port=7790 >>"$log" 2>&1 || status=$?
+"$godot" --headless --quit-after 200000 res://tests/smoke.tscn -- --port=7790 >>"$log" 2>&1 || status=$?
 cat "$log"
 if grep -Eq '(^|[^A-Z_])(ERROR|WARNING):' "$log"; then
 	echo "check.sh: Godot reported errors or warnings (treated as failures)." >&2

@@ -1,8 +1,9 @@
 class_name Monster
 extends CharacterBody3D
-## Wanders room to room and chases any player it can see. Crouching players
-## are only noticed up close, which is the point of sneaking. Loot and walls
-## block its view. The host runs it; clients see the replicated transform.
+## Roams the maze along routes from Level.route and chases any player it can
+## see. Crouching players are only noticed up close, which is the point of
+## sneaking. Loot and walls block its view. The host runs it; clients see the
+## replicated transform and only animate it.
 
 const Level := preload("res://scripts/level.gd")
 const Models := preload("res://scripts/models.gd")
@@ -17,7 +18,20 @@ const REST_TIME := 4.0  ## Pause after a catch so it doesn't camp the truck.
 const EYE_HEIGHT := 2.28  ## Where its eyes are on the model; also where it looks from.
 const STRIDE := 2.2  ## Walk-cycle radians per metre moved.
 
-var _wander_target := Vector3.ZERO
+const STUCK_TIME := 1.5  ## Re-plan after this long without getting closer to the next waypoint.
+const PROGRESS := 0.3  ## Metres closer that count as getting somewhere.
+## Impulse per physics step into loot in the way (N·s). At 60 steps/s that is 480 N, enough to
+## slide even the piano (about 340 N of friction); a shove can chip the loot's value.
+const SHOVE := 8.0
+const DETOUR := 1.6  ## How far to step aside when stuck (m).
+const WANDER_RANGE := Vector2i(2, 6)  ## How many rooms away a roam goes (min, max).
+
+var level: Level  ## Set by the host; clients leave it null and never think.
+
+var _route: Array[Vector3] = []  ## Waypoints still to walk while roaming.
+var _stuck_for := 0.0  ## Seconds without getting PROGRESS closer to the waypoint.
+var _best_distance := INF  ## Closest it has been to the current waypoint.
+var _detour_side := 1.0  ## Flips each time, so a second try goes round the other way.
 var _rest_left := 0.0
 var _rng := RandomNumberGenerator.new()
 
@@ -42,7 +56,6 @@ func _ready() -> void:
 
 	_build_model()
 	_last_position = position
-	_wander_target = Level.room_center(Level.room_at(position))
 
 
 func _process(delta: float) -> void:
@@ -73,19 +86,33 @@ func _physics_process(delta: float) -> void:
 	velocity.y = 0.0 if is_on_floor() else velocity.y - GRAVITY * delta
 	_rest_left -= delta
 	var target: Player = _visible_player() if _rest_left <= 0.0 else null
-	var goal := target.global_position if target else _wander_target
+	if target:
+		_route.clear()  # Re-plan from wherever the chase ends.
+	elif _route.is_empty():
+		_plan_roam()
+		_best_distance = INF
+	elif _stuck_for > STUCK_TIME:
+		# Blocked (usually by loot too heavy to shove): step aside and try round it.
+		_route.push_front(_detour(_route[0]))
+		_best_distance = INF
+		_stuck_for = 0.0
+	var goal := target.global_position if target else _route[0]
 	var to_goal := goal - global_position
 	to_goal.y = 0.0
+	# Stuck means not getting closer to the waypoint (sliding along loot still moves).
+	var distance := to_goal.length()
+	if target or distance < _best_distance - PROGRESS:
+		_best_distance = distance
+		_stuck_for = 0.0
+	else:
+		_stuck_for += delta
 
 	if target and to_goal.length() < CATCH_RANGE:
-		target.caught.rpc_id(target.get_multiplayer_authority(), Level.SPAWN)
+		target.caught.rpc_id(target.get_multiplayer_authority(), level.spawn)
 		_rest_left = REST_TIME
-		_wander_target = Level.room_center(Level.room_at(global_position))
-	elif not target and to_goal.length() < 0.5:
-		_wander_target = _neighbour_room_center()
-	elif not target and is_on_wall():
-		# Off the centre-to-centre line after a chase: re-centre in this room first.
-		_wander_target = Level.room_center(Level.room_at(global_position))
+	elif not target and to_goal.length() < 0.4:
+		_route.pop_front()
+		_best_distance = INF
 
 	var direction := to_goal.normalized()
 	var speed := CHASE_SPEED if target else WANDER_SPEED
@@ -94,6 +121,12 @@ func _physics_process(delta: float) -> void:
 	if direction.length_squared() > 0.0:
 		look_at(global_position + direction)
 	move_and_slide()
+	# Shove loot that blocks the way, like a monster barging through a room would.
+	for i in get_slide_collision_count():
+		var hit := get_slide_collision(i)
+		var loot := hit.get_collider() as Loot
+		if loot:
+			loot.apply_central_impulse(-hit.get_normal() * SHOVE)
 
 
 ## A gaunt, hunched figure: long arms that hang to its knees, a narrow head
@@ -202,11 +235,32 @@ func _visible_player() -> Player:
 	return best
 
 
-func _neighbour_room_center() -> Vector3:
-	var room := Level.room_at(global_position)
+## A point beside the blocked line to the waypoint, kept inside this room.
+func _detour(waypoint: Vector3) -> Vector3:
+	_detour_side = -_detour_side
+	var ahead := waypoint - global_position
+	ahead.y = 0.0
+	var aside := ahead.normalized().rotated(Vector3.UP, PI / 2.0) * _detour_side * DETOUR
+	var centre := level.room_center(level.room_at(global_position))
+	var inner := Level.ROOM / 2.0 - 0.8
+	var point := global_position + aside
+	point.x = clampf(point.x, centre.x - inner, centre.x + inner)
+	point.z = clampf(point.z, centre.z - inner, centre.z + inner)
+	point.y = 0.0
+	return point
+
+
+## Picks a room a few doors away and walks there, starting from the middle of
+## this room so the first leg is clear (rooms are empty boxes).
+func _plan_roam() -> void:
+	var here := level.room_at(global_position)
 	var options: Array[Vector2i] = []
-	for step: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-		var next := room + step
-		if next.x >= 0 and next.y >= 0 and next.x < Level.ROOMS and next.y < Level.ROOMS:
-			options.append(next)
-	return Level.room_center(options[_rng.randi() % options.size()])
+	var distance := level.distances_from(here)
+	for room: Vector2i in distance:
+		if distance[room] >= WANDER_RANGE.x and distance[room] <= WANDER_RANGE.y:
+			options.append(room)
+	if options.is_empty():
+		options = level.neighbours(here)
+	var target := options[_rng.randi() % options.size()] if options else here
+	_route = level.route(here, target)
+	_route.push_front(level.room_center(here))

@@ -1,9 +1,14 @@
 extends Node
-## Headless smoke test, run by tools/check.sh. Hosts a session, drags one loot
-## item into the truck with a scripted grab, and checks it was banked and the
-## monster exists. Exits 0 on pass, 1 on fail.
+## Headless smoke test, run by tools/check.sh. Hosts a session; checks every
+## room of the maze is reachable, drags one loot item into the truck with a
+## scripted grab, and checks the monsters roam through several rooms rather
+## than sticking. Exits 0 on pass, 1 on fail.
 
 const Level := preload("res://scripts/level.gd")
+
+const ROAM_SECONDS := 40.0  ## Simulated, at ROAM_SPEEDUP times real time.
+const ROAM_SPEEDUP := 4.0
+const ROAM_ROOMS := 3  ## Rooms each monster must pass through in that time.
 
 var _failed := false
 
@@ -26,14 +31,19 @@ func _ready() -> void:
 		if candidate.mass * gravity < Loot.MAX_FORCE:
 			loot = candidate
 			break
-	_check(game.get_node_or_null("Monsters/Monster") != null, "monster spawned")
+	var level: Level = game.get("level")
+	var reachable := level.distances_from(level.spawn_room).size()
+	var rooms := Level.COLUMNS * Level.ROWS
+	_check(reachable == rooms, "every room is reachable (%d of %d)" % [reachable, rooms])
+	_check(game.get_node_or_null("Monsters/Monster1") != null, "both monsters spawned")
 	if _check(player != null and loot != null, "host spawned a player and loot"):
 		# Stop the player's own input from clearing the grab, then hold the
 		# loot above the truck, starting from beside it in the spawn room.
 		player.set_physics_process(false)
-		loot.global_position = Level.TRUCK + Vector3(3.0, 0.0, -2.5)
+		var truck: Vector3 = game.get("level").truck
+		loot.global_position = truck + Vector3(3.0, 0.0, -2.5)
 		player.held_loot = loot.name
-		player.hold_point = Level.TRUCK
+		player.hold_point = truck
 		var value := loot.value
 		for i in 240:
 			await get_tree().physics_frame
@@ -42,6 +52,23 @@ func _ready() -> void:
 			banked > 0 and banked <= value, "dragged loot was banked ($%d of $%d)" % [banked, value]
 		)
 		_check(not is_instance_valid(loot), "banked loot was removed")
+
+	# Park the player out of sight so the monsters roam instead of chasing.
+	player.global_position = level.truck + Vector3(0, 0.5, 0)
+	var visited := {}
+	Engine.time_scale = ROAM_SPEEDUP
+	# time_scale stretches each physics step rather than adding steps.
+	for i in roundi(ROAM_SECONDS * Engine.physics_ticks_per_second / ROAM_SPEEDUP):
+		await get_tree().physics_frame
+		for node in game.get_node("Monsters").get_children():
+			var monster := node as Monster
+			if monster:
+				var seen: Dictionary = visited.get_or_add(monster.name, {})
+				seen[level.room_at(monster.global_position)] = true
+	Engine.time_scale = 1.0
+	for monster_name: String in visited:
+		var count: int = visited[monster_name].size()
+		_check(count >= ROAM_ROOMS, "%s roamed through %d rooms" % [monster_name, count])
 	print("SMOKE FAIL" if _failed else "SMOKE PASS")
 	get_tree().quit(1 if _failed else 0)
 
